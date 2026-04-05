@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8"/>
+    <title>카카오맵 실시간 버스 데모</title>
+    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=01d103e1fba65540688cdac2e1f901b1"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            background: #f2f5f9; color: #1f2937;
+            overflow: hidden;
+        }
+        
+        /* 전체 레이아웃: 왼쪽 패널 300px, 오른쪽 지도 꽉 차게 */
+        .wrap {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* 왼쪽 사이드 패널 */
+        .panel {
+            background: #ffffff;
+            border-right: 1px solid #dbe3ec;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+            z-index: 10; /* 지도보다 위에 오도록 */
+        }
+        .panel h1 { margin: 0; font-size: 22px; }
+        .panel p { margin: 0; line-height: 1.5; color: #4b5563; font-size: 14px; }
+        
+        .status-card {
+            padding: 15px;
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* 오른쪽 지도 영역 */
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 🚌 버스 마커 (카카오맵 CustomOverlay용 CSS) */
+        .bus-marker {
+            background: #e11d48; /* 101번 빨간색 */
+            color: white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            text-align: center;
+            line-height: 26px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 2px solid white;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.3);
+            /* 마커 중심점을 정확히 맞추기 위한 트랜스폼 */
+            transform: translate(-50%, -50%); 
+        }
+
+        /* 정류장 마커 (이름표) */
+        .stop-label {
+            background: white;
+            border: 2px solid #334155;
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transform: translate(-50%, -150%);
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <aside class="panel">
+            <div>
+                <h1>실시간 버스 지도</h1>
+                <p>여의도 일대 실제 지도 위에 가상의 101번 노선과 버스를 띄웠습니다.</p>
+            </div>
+
+            <div class="status-card">
+                <strong>🔴 101번 버스</strong><br>
+                여의도역 ➔ 여의나루역<br>
+                <span id="bus-status" style="color: #e11d48; font-weight: bold;">운행 중...</span>
+            </div>
+            
+            <div class="status-card" style="margin-top: auto; background: #eff6ff; border-color: #bfdbfe;">
+                <strong>💡 개발 팁</strong><br>
+                파이썬으로 추출한 정류장 좌표들을 카카오맵 `LatLng` 배열에 넣기만 하면 실제 노선이 완성됩니다!
+            </div>
+        </aside>
+
+        <div id="map"></div>
+    </div>
+
+    <script>
+        // 1. 카카오맵 띄우기 (여의도역 중심)
+        var container = document.getElementById('map');
+        var options = {
+            center: new kakao.maps.LatLng(37.524000, 126.928000), // 여의도역과 여의나루역 중간쯤
+            level: 4
+        };
+        var map = new kakao.maps.Map(container, options);
+
+        // 2. 가상의 101번 노선 좌표 만들기 (여의도역 -> IFC몰 부근 -> 여의나루역)
+        var routePath = [
+            new kakao.maps.LatLng(37.521715, 126.924290), // 여의도역
+            new kakao.maps.LatLng(37.523824, 126.925695), // 여의도 환승센터 부근
+            new kakao.maps.LatLng(37.525546, 126.928420), // 더현대 부근
+            new kakao.maps.LatLng(37.527074, 126.932755)  // 여의나루역
+        ];
+
+        // 3. 지도에 노선(Polyline) 그리기
+        var polyline = new kakao.maps.Polyline({
+            map: map,
+            path: routePath,
+            strokeWeight: 6,       // 선의 두께
+            strokeColor: '#e11d48', // 선의 색깔 (빨간색)
+            strokeOpacity: 0.8,    // 선의 불투명도
+            strokeStyle: 'solid'   // 선의 스타일
+        });
+
+        // 4. 정류장 표시하기 (양 끝점)
+        var stops = [
+            { name: "여의도역", latlng: routePath[0] },
+            { name: "여의나루역", latlng: routePath[routePath.length - 1] }
+        ];
+
+        stops.forEach(function(stop) {
+            var stopOverlay = new kakao.maps.CustomOverlay({
+                position: stop.latlng,
+                content: `<div class="stop-label">${stop.name}</div>`,
+                map: map
+            });
+        });
+
+        // 5. 움직이는 버스 만들기 (CustomOverlay)
+        var busOverlay = new kakao.maps.CustomOverlay({
+            position: routePath[0],
+            content: '<div class="bus-marker">101</div>',
+            map: map,
+            zIndex: 3
+        });
+
+        // 6. 버스 애니메이션 로직 (경로를 따라 이동)
+        var progress = 0;
+        var speed = 0.0015; // 버스 속도 조절
+        var statusText = document.getElementById('bus-status');
+
+        function animateBus() {
+            progress += speed;
+            if (progress >= 1) {
+                progress = 0; // 끝에 도달하면 다시 처음으로 루프
+            }
+
+            // 노선의 어느 구간에 있는지 계산하는 수학 로직
+            var totalSegments = routePath.length - 1;
+            var scaledProgress = progress * totalSegments;
+            var index = Math.floor(scaledProgress);
+            if (index >= totalSegments) index = totalSegments - 1;
+            var t = scaledProgress - index; // 현재 구간에서의 비율 (0 ~ 1)
+
+            var p1 = routePath[index];
+            var p2 = routePath[index + 1];
+
+            // p1과 p2 사이의 위도, 경도 보간 (보통 직선 이동)
+            var lat = p1.getLat() + (p2.getLat() - p1.getLat()) * t;
+            var lng = p1.getLng() + (p2.getLng() - p1.getLng()) * t;
+
+            // 버스 위치 업데이트!
+            busOverlay.setPosition(new kakao.maps.LatLng(lat, lng));
+
+            // 상태 텍스트 업데이트 (옵션)
+            statusText.innerText = `좌표: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+            // 다음 프레임 요청 (무한 반복)
+            requestAnimationFrame(animateBus);
+        }
+
+        // 애니메이션 시작!
+        animateBus();
+    </script>
+</body>
+</html>
