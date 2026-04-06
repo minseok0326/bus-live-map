@@ -376,9 +376,9 @@
     // 지도 클릭 시 아무 동작도 하지 않음 (카카오 POI 팝업 방지)
     kakao.maps.event.addListener(map, 'click', function() {});
 
-    // ── API 설정 (Vercel Edge Function 프록시 경유 → CORS 우회) ──
+    // ── API 설정 (server.js 프록시 경유 → CORS 우회) ──
     const API_KEY = 'd52beb8a2f12b32e84824d4b4dc44d241960be4a3a4e2295ed4d27a3821b1c36';
-    const BUS_API = '/api/bus-api';
+    const BUS_API = '/bus-api/rest';
 
     // ── 노선별 설정 ──
     const ROUTE_CFGS = {
