@@ -6,12 +6,12 @@ module.exports = async function handler(req, res) {
   url.searchParams.delete('path');
   const query = url.search;
 
-  const targetPath = `/api/${path}${query}`;
+  const targetPath = `/api/rest/${path}${query}`;
   console.log('[proxy] target:', `http://ws.bus.go.kr${targetPath}`);
 
   return new Promise((resolve) => {
     const proxyReq = http.request(
-      { hostname: 'ws.bus.go.kr', port: 80, path: targetPath, method: 'GET' },
+      { hostname: 'ws.bus.go.kr', port: 80, path: targetPath, method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' } },
       (proxyRes) => {
         const chunks = [];
         proxyRes.on('data', c => chunks.push(c));
