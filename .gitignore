@@ -1,5 +1,2 @@
-/test1.html
-/yeouido_bus_map.java
-/서울시버스정류소위치정보(20260108).xlsx
-/지도 테스트.py
-/카카오지도 - 복사본.html
+node_modules/
+.vercel/
