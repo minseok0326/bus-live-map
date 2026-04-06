@@ -8,7 +8,7 @@ const PORT = 3000;
 app.use(express.static(__dirname));
 
 // 서울 버스 API 프록시 — 응답 본문을 버퍼로 받아 로그 출력 후 전달
-app.get('/bus-api/*', (req, res) => {
+app.get('/api/bus-api/*', (req, res) => {
   const apiPath     = '/api/' + req.params[0];
   const queryString = new URLSearchParams(req.query).toString();
   const fullPath    = queryString ? `${apiPath}?${queryString}` : apiPath;
