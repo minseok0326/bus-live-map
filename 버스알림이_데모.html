@@ -132,6 +132,36 @@
       opacity: 0.4;
     }
 
+    /* ── 교통정보 버튼 ── */
+    .traffic-btn {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 14px;
+      background: #f9fafb;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: left;
+      font-family: inherit;
+      width: 100%;
+    }
+    .traffic-btn:hover {
+      background: #f0fdf4;
+      border-color: #86efac;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .traffic-btn.active {
+      background: #14532d;
+      border-color: #14532d;
+      color: white;
+      box-shadow: 0 4px 16px rgba(20,83,45,0.25);
+    }
+    .traffic-btn .bus-btn-sub { color: #9ca3af; }
+    .traffic-btn.active .bus-btn-sub { color: #bbf7d0; }
+
     /* ── 범례 ── */
     .legend-box {
       background: #f8fafc;
@@ -328,6 +358,21 @@
 
       <hr class="divider" />
 
+      <!-- 교통정보 -->
+      <div>
+        <div class="section-label">교통 정보</div>
+        <button class="traffic-btn" id="trafficBtn" onclick="toggleTraffic()">
+          <div class="bus-badge" style="background:#16a34a">교통</div>
+          <div class="bus-btn-info">
+            <div class="bus-btn-name">여의도 교통상황</div>
+            <div class="bus-btn-sub">실시간 도로 혼잡도 표시</div>
+          </div>
+          <span class="bus-btn-arrow">›</span>
+        </button>
+      </div>
+
+      <hr class="divider" />
+
       <!-- 범례 -->
       <div class="legend-box">
         <div class="section-label">노선 색상</div>
@@ -401,6 +446,48 @@
     let activeRouteCfgs    = [];  // 현재 활성 노선 설정 목록
     let refreshTimer       = null;
     let activeKey          = null;
+
+    // ── 교통정보 레이어 ──
+    const trafficLayer = new kakao.maps.TrafficLayer();
+    let trafficOn = false;
+
+    const YEOUIDO_PATH = [
+      new kakao.maps.LatLng(37.5255, 126.9197),
+      new kakao.maps.LatLng(37.5275, 126.9192),
+      new kakao.maps.LatLng(37.5305, 126.9198),
+      new kakao.maps.LatLng(37.5332, 126.9228),
+      new kakao.maps.LatLng(37.5338, 126.9280),
+      new kakao.maps.LatLng(37.5325, 126.9385),
+      new kakao.maps.LatLng(37.5300, 126.9430),
+      new kakao.maps.LatLng(37.5268, 126.9428),
+      new kakao.maps.LatLng(37.5248, 126.9390),
+      new kakao.maps.LatLng(37.5240, 126.9310),
+      new kakao.maps.LatLng(37.5245, 126.9240),
+    ];
+    const WORLD_PATH = [
+      new kakao.maps.LatLng(90, -180),
+      new kakao.maps.LatLng(90,  180),
+      new kakao.maps.LatLng(-90, 180),
+      new kakao.maps.LatLng(-90,-180),
+    ];
+    const trafficMask = new kakao.maps.Polygon({
+      path: [WORLD_PATH, YEOUIDO_PATH],
+      strokeWeight: 0,
+      fillColor: '#ffffff',
+      fillOpacity: 0.72,
+    });
+
+    function toggleTraffic() {
+      trafficOn = !trafficOn;
+      if (trafficOn) {
+        trafficLayer.setMap(map);
+        trafficMask.setMap(map);
+      } else {
+        trafficLayer.setMap(null);
+        trafficMask.setMap(null);
+      }
+      document.getElementById('trafficBtn').classList.toggle('active', trafficOn);
+    }
 
     // ── 지도 레이어 초기화 ──
     function clearMap() {
