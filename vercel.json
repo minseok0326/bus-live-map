@@ -1,3 +1,8 @@
 {
-  "framework": null
+  "framework": null,
+  "functions": {
+    "api/proxy.js": {
+      "regions": ["icn1"]
+    }
+  }
 }
