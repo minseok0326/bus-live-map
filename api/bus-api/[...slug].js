@@ -1,21 +1,12 @@
-export const config = {
-  runtime: 'edge',
-  regions: ['icn1'],
-};
+export default async function handler(req, res) {
+  const slug = req.url.replace(/^\/api\/bus-api\//, '').split('?')[0];
+  const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  const targetUrl = `http://ws.bus.go.kr/api/${slug}${query}`;
 
-export default async function handler(req) {
-  const url = new URL(req.url);
-  const slug = url.pathname.replace('/api/bus-api/', '');
-  const queryString = url.search;
-  const targetUrl = `http://ws.bus.go.kr/api/${slug}${queryString}`;
+  const upstream = await fetch(targetUrl);
+  const text = await upstream.text();
 
-  const response = await fetch(targetUrl);
-  const text = await response.text();
-
-  return new Response(text, {
-    headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+  res.status(upstream.status).send(text);
 }

@@ -1,9 +1,8 @@
 {
   "framework": null,
-  "rewrites": [
-    {
-      "source": "/bus-api/rest/:path*",
-      "destination": "/api/bus-api/:path*"
+  "functions": {
+    "api/bus-api/[...slug].js": {
+      "regions": ["icn1"]
     }
-  ]
+  }
 }
