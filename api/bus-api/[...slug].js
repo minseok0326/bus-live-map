@@ -1,3 +1,5 @@
+const http = require('http');
+
 module.exports = async function handler(req, res) {
   const slug = req.url.replace(/^\/api\/bus-api\//, '').split('?')[0];
   const query = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
@@ -5,18 +7,34 @@ module.exports = async function handler(req, res) {
 
   console.log('[proxy] targetUrl:', targetUrl);
 
-  try {
-    const upstream = await fetch(targetUrl);
-    const text = await upstream.text();
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'ws.bus.go.kr',
+      port: 80,
+      path: `/api/${slug}${query}`,
+      method: 'GET',
+    };
 
-    console.log('[proxy] upstream status:', upstream.status);
-    console.log('[proxy] upstream body:', text.substring(0, 300));
+    const proxyReq = http.request(options, (proxyRes) => {
+      const chunks = [];
+      proxyRes.on('data', chunk => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        console.log('[proxy] upstream status:', proxyRes.statusCode);
+        console.log('[proxy] upstream body:', text.substring(0, 300));
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+        res.status(200).send(text);
+        resolve();
+      });
+    });
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', 'text/xml; charset=utf-8');
-    res.status(200).send(text);
-  } catch (err) {
-    console.error('[proxy] error:', err.message);
-    res.status(500).send(`proxy error: ${err.message}`);
-  }
+    proxyReq.on('error', (err) => {
+      console.error('[proxy] error:', err.message);
+      res.status(500).json({ error: err.message, targetUrl });
+      resolve();
+    });
+
+    proxyReq.end();
+  });
 };
