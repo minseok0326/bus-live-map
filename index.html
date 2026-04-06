@@ -378,7 +378,10 @@
 
     // ── API 설정 (Vercel Edge Function 프록시 경유 → CORS 우회) ──
     const API_KEY = '88416fd1fd0430fb9a6537b7bcb9f684304bb707e3eec8e5b8cd2ba448418bb3';
-    const BUS_API = '/api';
+    const BUS_API = '/api/proxy';
+    function busUrl(path) {
+      return `${BUS_API}?path=${encodeURIComponent(path)}&ServiceKey=${API_KEY}`;
+    }
 
     // ── 노선별 설정 ──
     const ROUTE_CFGS = {
@@ -470,7 +473,7 @@
 
       await Promise.all(activeRouteCfgs.map(async cfg => {
         try {
-          const res   = await fetch(`${BUS_API}/buspos/getBusPosByRtid?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`);
+          const res   = await fetch(`${busUrl('buspos/getBusPosByRtid')}&busRouteId=${cfg.routeId}`);
           const doc   = parseXml(await res.text());
           const buses = xmlItems(doc).filter(b => {
             const ord = parseInt(xmlVal(b, 'sectOrd'));
@@ -540,8 +543,8 @@
 
       try {
         const [pathRes, stationRes] = await Promise.all([
-          fetch(`${BUS_API}/busRouteInfo/getRoutePath?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`),
-          fetch(`${BUS_API}/busRouteInfo/getStaionByRoute?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`),
+          fetch(`${busUrl('busRouteInfo/getRoutePath')}&busRouteId=${cfg.routeId}`),
+          fetch(`${busUrl('busRouteInfo/getStaionByRoute')}&busRouteId=${cfg.routeId}`),
         ]);
         const pathDoc    = parseXml(await pathRes.text());
         const stationDoc = parseXml(await stationRes.text());
