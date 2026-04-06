@@ -1,39 +1,647 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <meta charset="utf-8"/>
-    <title>카카오맵 테스트</title>
-    <style>
-        /* 화면 기본 여백 없애기 */
-        html, body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-        }
-        
-        /* 지도를 화면에 꽉 차게 설정 */
-        #map {
-            width: 100%;
-            height: 100vh;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>스마트 버스 알림이</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: #f2f5f9;
+      color: #1f2937;
+    }
+
+    .wrap {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      min-height: 100vh;
+    }
+
+    /* ── 왼쪽 패널 ── */
+    .panel {
+      background: #ffffff;
+      border-right: 1px solid #dbe3ec;
+      padding: 28px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .panel-title {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      color: #111827;
+      line-height: 1.2;
+    }
+
+    .panel-title span {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      color: #6b7280;
+      margin-top: 6px;
+      letter-spacing: 0;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    /* ── 노선 선택 버튼 ── */
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #9ca3af;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .bus-btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bus-btn {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 14px;
+      background: #f9fafb;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: left;
+      font-family: inherit;
+    }
+
+    .bus-btn:hover {
+      background: #f0f4ff;
+      border-color: #a5b4fc;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .bus-btn.active {
+      background: #111827;
+      border-color: #111827;
+      color: white;
+      box-shadow: 0 4px 16px rgba(17,24,39,0.25);
+    }
+
+    .bus-badge {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 800;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .bus-btn-info {
+      flex: 1;
+    }
+
+    .bus-btn-name {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .bus-btn-sub {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 2px;
+    }
+
+    .bus-btn.active .bus-btn-sub {
+      color: #d1d5db;
+    }
+
+    .bus-btn-arrow {
+      font-size: 18px;
+      opacity: 0.4;
+    }
+
+    /* ── 범례 ── */
+    .legend-box {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .legend-box .section-label {
+      margin-bottom: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #374151;
+      margin: 8px 0;
+    }
+
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── 현재 상태 ── */
+    .status-box {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      padding: 16px;
+      flex: 1;
+    }
+
+    .status-box .section-label {
+      margin-bottom: 12px;
+    }
+
+    .status-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .status-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      cursor: pointer;
+      transition: border 0.15s;
+    }
+
+    .status-card:hover {
+      border-color: #94a3b8;
+    }
+
+    .status-card .bus-no {
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .status-card .route-info {
+      color: #6b7280;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .status-empty {
+      color: #9ca3af;
+      font-size: 13px;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* ── 오른쪽 지도 영역 ── */
+    .map-area {
+      padding: 20px;
+    }
+
+    .map-card {
+      background: white;
+      border-radius: 20px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      height: calc(100vh - 40px);
+      min-height: 600px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      border-radius: 20px;
+    }
+
+    /* ── 선택된 노선 상단 뱃지 ── */
+    .map-overlay-badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: #111827;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-size: 14px;
+      font-weight: 700;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .map-overlay-badge.visible {
+      display: flex;
+    }
+
+    .badge-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    @media (max-width: 900px) {
+      .wrap { grid-template-columns: 1fr; }
+      .map-card { height: 65vh; min-height: 400px; }
+    }
+  </style>
 </head>
 <body>
-    <div id="map"></div>
-    
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=01d103e1fba65540688cdac2e1f901b1"></script>
-    <script>
-        var container = document.getElementById('map');
-        
-        // 여의도 중심 좌표 설정
-        var options = {
-            center: new kakao.maps.LatLng(37.521715, 126.924290), 
-            level: 4 // 확대 레벨
-        };
+  <div class="wrap">
 
-        // 지도 생성
-        var map = new kakao.maps.Map(container, options);
-    </script>
+    <!-- 왼쪽 패널 -->
+    <aside class="panel">
+
+      <div>
+        <div class="panel-title">
+          스마트 버스<br>알림이
+          <span>실시간 버스 위치 · 도착 안내</span>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 노선 버튼 -->
+      <div>
+        <div class="section-label">노선 선택</div>
+        <div class="bus-btn-group" id="busButtons">
+
+          <button class="bus-btn" data-bus="all" onclick="selectBus('all')">
+            <div class="bus-badge" style="background:#374151">전체</div>
+            <div class="bus-btn-info">
+              <div class="bus-btn-name">전체 노선 보기</div>
+              <div class="bus-btn-sub">모든 버스 노선 표시</div>
+            </div>
+            <span class="bus-btn-arrow">›</span>
+          </button>
+
+          <button class="bus-btn" data-bus="1" onclick="selectBus('1')">
+            <div class="bus-badge" style="background:#e11d48;font-size:13px">162</div>
+            <div class="bus-btn-info">
+              <div class="bus-btn-name">162번 버스</div>
+              <div class="bus-btn-sub">정릉 · 여의도 운행</div>
+            </div>
+            <span class="bus-btn-arrow">›</span>
+          </button>
+
+          <button class="bus-btn" data-bus="2" onclick="selectBus('2')">
+            <div class="bus-badge" style="background:#2563eb">261</div>
+            <div class="bus-btn-info">
+              <div class="bus-btn-name">261번 버스</div>
+              <div class="bus-btn-sub">수색역 · 여의도 운행</div>
+            </div>
+            <span class="bus-btn-arrow">›</span>
+          </button>
+
+          <button class="bus-btn" data-bus="3" onclick="selectBus('3')">
+            <div class="bus-badge" style="background:#16a34a;font-size:13px">461</div>
+            <div class="bus-btn-info">
+              <div class="bus-btn-name">461번 버스</div>
+              <div class="bus-btn-sub">장지공영 · 여의도공원 운행</div>
+            </div>
+            <span class="bus-btn-arrow">›</span>
+          </button>
+
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <!-- 범례 -->
+      <div class="legend-box">
+        <div class="section-label">노선 색상</div>
+        <div class="legend-item"><span class="swatch" style="background:#e11d48"></span> 162번 노선</div>
+        <div class="legend-item"><span class="swatch" style="background:#2563eb"></span> 261번 노선</div>
+        <div class="legend-item"><span class="swatch" style="background:#16a34a"></span> 461번 노선</div>
+      </div>
+
+      <!-- 현재 운행 상태 -->
+      <div class="status-box">
+        <div class="section-label">현재 운행 위치</div>
+        <div class="status-list" id="statusList">
+          <div class="status-empty">노선을 선택하면<br>버스 위치가 표시됩니다.</div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- 오른쪽 지도 영역 -->
+    <main class="map-area">
+      <div class="map-card">
+
+        <!-- 선택된 노선 표시 뱃지 -->
+        <div class="map-overlay-badge" id="overlayBadge">
+          <span class="badge-dot" id="badgeDot"></span>
+          <span id="badgeText"></span>
+        </div>
+
+        <!-- 카카오맵 -->
+        <div id="map"></div>
+
+      </div>
+    </main>
+
+  </div>
+
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=01d103e1fba65540688cdac2e1f901b1"></script>
+  <script>
+    // ── 카카오맵 초기화 ──
+    var mapContainer = document.getElementById('map');
+    var map = new kakao.maps.Map(mapContainer, {
+      center: new kakao.maps.LatLng(37.521715, 126.924290),
+      level: 4
+    });
+
+    // 지도 클릭 시 아무 동작도 하지 않음 (카카오 POI 팝업 방지)
+    kakao.maps.event.addListener(map, 'click', function() {});
+
+    // ── API 설정 (server.js 프록시 경유 → CORS 우회) ──
+    const API_KEY = '88416fd1fd0430fb9a6537b7bcb9f684304bb707e3eec8e5b8cd2ba448418bb3';
+    const BUS_API = '/bus-api/rest';
+
+    // ── 노선별 설정 ──
+    const ROUTE_CFGS = {
+      '1': { routeId: '100100034', busNo: '162', color: '#e11d48', seqMin: 32, seqMax: 43, label: '162번 (여의도 구간)' },
+      '2': { routeId: '100100043', busNo: '261', color: '#2563eb', seqMin: 55, seqMax: 70, label: '261번 (여의도 구간)' },
+      '3': { routeId: '100100071', busNo: '461', color: '#16a34a', seqMin: 64, seqMax: 74, label: '461번 (여의도 구간)' },
+    };
+
+    const busConfig = {
+      all: { label: "전체 노선 (162·261·461)", color: "#374151" },
+      "1": { label: "162번 버스 (여의도)", color: "#e11d48" },
+      "2": { label: "261번 버스 (여의도)", color: "#2563eb" },
+      "3": { label: "461번 버스 (여의도)", color: "#16a34a" },
+    };
+
+    // ── 지도 레이어 상태 ──
+    let activePolylines    = [];  // 노선별 Polyline (복수)
+    let activeBusOverlays  = [];  // 버스 마커 전체
+    let activeStopOverlays = [];  // 정류장 마커 전체
+    let activeRouteCfgs    = [];  // 현재 활성 노선 설정 목록
+    let refreshTimer       = null;
+
+    // ── 지도 레이어 초기화 ──
+    function clearMap() {
+      activePolylines.forEach(p => p.setMap(null));
+      activePolylines = [];
+      activeBusOverlays.forEach(o => o.setMap(null));
+      activeBusOverlays = [];
+      activeStopOverlays.forEach(o => o.setMap(null));
+      activeStopOverlays = [];
+      if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+      activeRouteCfgs = [];
+    }
+
+    // ── 정류장 마커 그리기 (API에서 받은 stations 배열 사용) ──
+    function drawStops(stations, color) {
+      stations.forEach(s => {
+        const overlay = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(s.lat, s.lng),
+          content: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none">
+            <div style="
+              width:12px;height:12px;border-radius:50%;
+              background:white;border:2.5px solid ${color};
+              box-shadow:0 1px 4px rgba(0,0,0,0.25);
+            "></div>
+            <div style="
+              background:rgba(255,255,255,0.92);
+              color:#111827;font-size:10px;font-weight:600;
+              padding:2px 6px;border-radius:6px;
+              border:1px solid #e5e7eb;
+              box-shadow:0 1px 4px rgba(0,0,0,0.12);
+              white-space:nowrap;font-family:Arial,'Malgun Gothic',sans-serif;
+            ">${s.nm}</div>
+          </div>`,
+          yAnchor: 0, xAnchor: 0.5
+        });
+        overlay.setMap(map);
+        activeStopOverlays.push(overlay);
+      });
+    }
+
+    function setStatusMsg(html) {
+      document.getElementById('statusList').innerHTML = html;
+    }
+
+    // ── XML 파싱 헬퍼 ──
+    function parseXml(text) {
+      return new DOMParser().parseFromString(text, 'text/xml');
+    }
+    function xmlItems(doc) {
+      return [...doc.querySelectorAll('itemList')];
+    }
+    function xmlVal(el, tag) {
+      return el.querySelector(tag)?.textContent?.trim() ?? '';
+    }
+
+    // 혼잡도 → 색상
+    const CONGEST_COLOR = { '1':'#22c55e', '2':'#f59e0b', '3':'#f97316', '4':'#ef4444' };
+    const CONGEST_LABEL = { '1':'여유', '2':'보통', '3':'혼잡', '4':'매우혼잡' };
+
+    // ── 버스 위치 갱신 — 활성화된 모든 노선 동시 갱신 ──
+    async function refreshBusPos() {
+      if (!activeRouteCfgs.length) return;
+      activeBusOverlays.forEach(o => o.setMap(null));
+      activeBusOverlays = [];
+
+      const allCards = [];
+      let totalBuses = 0;
+
+      await Promise.all(activeRouteCfgs.map(async cfg => {
+        try {
+          const res   = await fetch(`${BUS_API}/buspos/getBusPosByRtid?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`);
+          const doc   = parseXml(await res.text());
+          const buses = xmlItems(doc).filter(b => {
+            const ord = parseInt(xmlVal(b, 'sectOrd'));
+            return ord >= cfg.seqMin && ord <= cfg.seqMax;
+          });
+          totalBuses += buses.length;
+
+          buses.forEach(b => {
+            const lat     = parseFloat(xmlVal(b, 'gpsY'));
+            const lng     = parseFloat(xmlVal(b, 'gpsX'));
+            const congest = xmlVal(b, 'congetion') || '1';
+            const color   = CONGEST_COLOR[congest] ?? cfg.color;
+            if (!lat || !lng) return;
+            const overlay = new kakao.maps.CustomOverlay({
+              position: new kakao.maps.LatLng(lat, lng),
+              content: `<div style="
+                background:${color};color:white;
+                width:38px;height:38px;border-radius:50%;
+                display:flex;align-items:center;justify-content:center;
+                font-size:10px;font-weight:800;
+                border:3px solid white;
+                box-shadow:0 3px 10px rgba(0,0,0,0.35);
+                font-family:Arial,sans-serif;
+                pointer-events:none;
+              ">${cfg.busNo}</div>`,
+              yAnchor: 0.5, xAnchor: 0.5
+            });
+            overlay.setMap(map);
+            activeBusOverlays.push(overlay);
+
+            const plainNo = xmlVal(b, 'plainNo') || '-';
+            const ord     = xmlVal(b, 'sectOrd');
+            allCards.push({ cfg, color, plainNo, congest, ord });
+          });
+        } catch (e) {
+          console.error('버스 위치 오류:', cfg.busNo, e);
+        }
+      }));
+
+      const time = new Date().toLocaleTimeString('ko-KR');
+      if (!allCards.length) {
+        setStatusMsg(`<div class="status-empty" style="font-size:13px">
+          여의도 구간 운행 버스 없음<br>
+          <span style="color:#9ca3af;font-size:11px">${time} 기준</span>
+        </div>`);
+        return;
+      }
+      setStatusMsg(`
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:6px">${time} 기준 · 5초 갱신 · 여의도 총 ${totalBuses}대</div>
+        ${allCards.map(({ cfg, color, plainNo, congest, ord }) => `
+          <div class="status-card" style="display:flex;align-items:center;gap:10px">
+            <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0"></div>
+            <div>
+              <span class="bus-no" style="color:${cfg.color}">${cfg.busNo}번</span>
+              <span style="font-size:12px;color:#6b7280"> · ${plainNo}</span>
+              <div class="route-info">${CONGEST_LABEL[congest] ?? ''} · 구간 ${ord}번째</div>
+            </div>
+          </div>`).join('')}
+      `);
+    }
+
+    // ── 단일 노선 경로 그리기 (clearMap/타이머 없음) ──
+    async function drawRouteForKey(key) {
+      const cfg = ROUTE_CFGS[key];
+      if (!cfg) return;
+      activeRouteCfgs.push(cfg);
+
+      try {
+        const [pathRes, stationRes] = await Promise.all([
+          fetch(`${BUS_API}/busRouteInfo/getRoutePath?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`),
+          fetch(`${BUS_API}/busRouteInfo/getStaionByRoute?ServiceKey=${API_KEY}&busRouteId=${cfg.routeId}`),
+        ]);
+        const pathDoc    = parseXml(await pathRes.text());
+        const stationDoc = parseXml(await stationRes.text());
+        const headerCd   = pathDoc.querySelector('headerCd')?.textContent;
+
+        if (headerCd !== '0') { console.warn('headerCd:', headerCd, cfg.busNo); return; }
+
+        const stops = xmlItems(stationDoc)
+          .map(el => ({
+            seq: parseInt(xmlVal(el, 'seq')),
+            lat: parseFloat(xmlVal(el, 'gpsY')),
+            lng: parseFloat(xmlVal(el, 'gpsX')),
+            nm:  xmlVal(el, 'stationNm'),
+          }))
+          .filter(s => s.seq >= cfg.seqMin && s.seq <= cfg.seqMax && s.lat && s.lng);
+
+        function closestIdx(pts, lat, lng, from = 0) {
+          let minD = Infinity, idx = from;
+          for (let i = from; i < pts.length; i++) {
+            const d = (pts[i].lat - lat) ** 2 + (pts[i].lng - lng) ** 2;
+            if (d < minD) { minD = d; idx = i; }
+          }
+          return idx;
+        }
+
+        const allPts = xmlItems(pathDoc)
+          .map(p => ({ lat: parseFloat(xmlVal(p, 'gpsY')), lng: parseFloat(xmlVal(p, 'gpsX')) }))
+          .filter(p => p.lat && p.lng);
+
+        const si = closestIdx(allPts, stops[0].lat, stops[0].lng);
+        const ei = closestIdx(allPts, stops[stops.length-1].lat, stops[stops.length-1].lng, si + 100);
+        const sliced = allPts.slice(si, ei + 1);
+
+        const MIN_DIST = 0.0001;
+        const simplified = sliced.filter((p, i) => {
+          if (i === 0 || i === sliced.length - 1) return true;
+          const prev = sliced[i - 1];
+          return Math.sqrt((p.lat - prev.lat) ** 2 + (p.lng - prev.lng) ** 2) >= MIN_DIST;
+        });
+
+        const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
+        const polyline = new kakao.maps.Polyline({
+          path: kakaoPath, strokeWeight: 6, strokeColor: cfg.color,
+          strokeOpacity: 0.9, strokeStyle: 'solid'
+        });
+        polyline.setMap(map);
+        activePolylines.push(polyline);
+        drawStops(stops, cfg.color);
+
+        return kakaoPath; // bounds 계산용
+      } catch (err) {
+        console.error('노선 로드 오류:', cfg.busNo, err);
+      }
+    }
+
+    // ── 단일 노선 선택 ──
+    async function loadSingleRoute(key) {
+      clearMap();
+      setStatusMsg('<div class="status-empty">노선 불러오는 중…</div>');
+      const kakaoPath = await drawRouteForKey(key);
+      if (kakaoPath) {
+        const bounds = new kakao.maps.LatLngBounds();
+        kakaoPath.forEach(p => bounds.extend(p));
+        map.setBounds(bounds);
+      }
+      await refreshBusPos();
+      refreshTimer = setInterval(refreshBusPos, 5000);
+    }
+
+    // ── 전체 노선 선택 ──
+    async function loadAllRoutes() {
+      clearMap();
+      setStatusMsg('<div class="status-empty">노선 불러오는 중…</div>');
+      const paths = await Promise.all(['1', '2', '3'].map(k => drawRouteForKey(k)));
+      const bounds = new kakao.maps.LatLngBounds();
+      paths.forEach(p => p && p.forEach(pt => bounds.extend(pt)));
+      if (!bounds.isEmpty()) map.setBounds(bounds);
+      await refreshBusPos();
+      refreshTimer = setInterval(refreshBusPos, 5000);
+    }
+
+    // ── 버튼 클릭 핸들러 ──
+    function selectBus(busKey) {
+      document.querySelectorAll('.bus-btn').forEach(btn =>
+        btn.classList.toggle('active', btn.dataset.bus === busKey)
+      );
+      const cfg = busConfig[busKey];
+      document.getElementById('badgeDot').style.background = cfg.color;
+      document.getElementById('badgeText').textContent     = cfg.label + ' 선택됨';
+      document.getElementById('overlayBadge').classList.add('visible');
+
+      if (busKey === 'all') {
+        loadAllRoutes();
+      } else if (ROUTE_CFGS[busKey]) {
+        loadSingleRoute(busKey);
+      } else {
+        clearMap();
+        setStatusMsg('<div class="status-empty">준비 중입니다.</div>');
+      }
+    }
+  </script>
 </body>
 </html>
