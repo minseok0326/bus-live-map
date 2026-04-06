@@ -373,8 +373,8 @@
       level: 4
     });
 
-    // 지도 클릭 시 아무 동작도 하지 않음 (카카오 POI 팝업 방지)
-    kakao.maps.event.addListener(map, 'click', function() {});
+    // 지도 클릭 시 노선/버스 초기화
+    kakao.maps.event.addListener(map, 'click', function() { deselect(); });
 
     // ── API 설정 (Vercel Edge Function 프록시 경유 → CORS 우회) ──
     const API_KEY = '88416fd1fd0430fb9a6537b7bcb9f684304bb707e3eec8e5b8cd2ba448418bb3';
@@ -403,6 +403,7 @@
     let activeStopOverlays = [];  // 정류장 마커 전체
     let activeRouteCfgs    = [];  // 현재 활성 노선 설정 목록
     let refreshTimer       = null;
+    let activeKey          = null; // 현재 선택된 버튼 키
 
     // ── 지도 레이어 초기화 ──
     function clearMap() {
@@ -626,8 +627,19 @@
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
 
+    // ── 선택 해제 ──
+    function deselect() {
+      clearMap();
+      activeKey = null;
+      document.querySelectorAll('.bus-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('overlayBadge').classList.remove('visible');
+      setStatusMsg('<div class="status-empty">노선을 선택해주세요.</div>');
+    }
+
     // ── 버튼 클릭 핸들러 ──
     function selectBus(busKey) {
+      if (activeKey === busKey) { deselect(); return; }
+      activeKey = busKey;
       document.querySelectorAll('.bus-btn').forEach(btn =>
         btn.classList.toggle('active', btn.dataset.bus === busKey)
       );
