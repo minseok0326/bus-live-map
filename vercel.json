@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/bus-api/[...slug].js": {
+      "regions": ["icn1"]
+    }
+  },
   "rewrites": [
     {
       "source": "/bus-api/rest/:path*",
