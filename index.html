@@ -583,7 +583,7 @@
             secData.polylines.forEach((pl, i) => {
               const seq    = secData.stops[i]?.seq;
               const cg     = sectCongest[seq];
-              const color  = cg ? CONGEST_COLOR[cg] : '#d1d5db';
+              const color  = CONGEST_COLOR[cg] ?? CONGEST_COLOR['1'];
               pl.setOptions({ strokeColor: color });
             });
           }
