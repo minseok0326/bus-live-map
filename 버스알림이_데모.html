@@ -446,6 +446,7 @@
     let activeRouteCfgs    = [];  // 현재 활성 노선 설정 목록
     let refreshTimer       = null;
     let activeKey          = null;
+    let activeSectionMap   = {};
 
     // ── 교통정보 레이어 ──
     let trafficOn = false;
@@ -498,6 +499,7 @@
       activeStopOverlays = [];
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
       activeRouteCfgs = [];
+      activeSectionMap = {};
     }
 
     // ── 정류장 마커 그리기 (API에서 받은 stations 배열 사용) ──
@@ -565,6 +567,23 @@
           });
           totalBuses += buses.length;
 
+          // 구간 혼잡도 색칠
+          const sectCongest = {};
+          buses.forEach(b => {
+            const ord = parseInt(xmlVal(b, 'sectOrd'));
+            const cg  = xmlVal(b, 'congetion') || '1';
+            sectCongest[ord] = cg;
+          });
+          const secData = activeSectionMap[cfg.routeKey];
+          if (secData) {
+            secData.polylines.forEach((pl, i) => {
+              const seq   = secData.stops[i]?.seq;
+              const cg    = sectCongest[seq];
+              const color = cg ? CONGEST_COLOR[cg] : '#d1d5db';
+              pl.setOptions({ strokeColor: color });
+            });
+          }
+
           buses.forEach(b => {
             const lat     = parseFloat(xmlVal(b, 'gpsY'));
             const lng     = parseFloat(xmlVal(b, 'gpsX'));
@@ -621,8 +640,8 @@
 
     // ── 단일 노선 경로 그리기 (clearMap/타이머 없음) ──
     async function drawRouteForKey(key) {
-      const cfg = ROUTE_CFGS[key];
-      if (!cfg) return;
+      const cfg = { ...ROUTE_CFGS[key], routeKey: key };
+      if (!ROUTE_CFGS[key]) return;
       activeRouteCfgs.push(cfg);
 
       try {
@@ -669,37 +688,40 @@
           return Math.sqrt((p.lat - prev.lat) ** 2 + (p.lng - prev.lng) ** 2) >= MIN_DIST;
         });
 
-        const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
-        const polyline = new kakao.maps.Polyline({
-          path: kakaoPath, strokeWeight: 6, strokeColor: cfg.color,
-          strokeOpacity: 0.9, strokeStyle: 'solid'
-        });
-        polyline.setMap(map);
-        activePolylines.push(polyline);
-        drawStops(stops, cfg.color);
+        // ── 구간별 폴리라인 ──
+        const stopIdxs = [];
+        let searchFrom = 0;
+        for (const s of stops) {
+          const idx = closestIdx(simplified, s.lat, s.lng, searchFrom);
+          stopIdxs.push(idx);
+          searchFrom = idx;
+        }
 
-        return kakaoPath; // bounds 계산용
+        const sectionPolylines = [];
+        for (let i = 0; i < stops.length - 1; i++) {
+          const seg = simplified.slice(stopIdxs[i], stopIdxs[i + 1] + 1)
+            .map(p => new kakao.maps.LatLng(p.lat, p.lng));
+          if (seg.length < 2) continue;
+          const outline = new kakao.maps.Polyline({
+            path: seg, strokeWeight: 14, strokeColor: '#ffffff',
+            strokeOpacity: 0.9, strokeStyle: 'solid'
+          });
+          const line = new kakao.maps.Polyline({
+            path: seg, strokeWeight: 10, strokeColor: '#cccccc',
+            strokeOpacity: 0.95, strokeStyle: 'solid'
+          });
+          outline.setMap(map);
+          line.setMap(map);
+          activePolylines.push(outline, line);
+          sectionPolylines.push(line);
+        }
+        activeSectionMap[key] = { polylines: sectionPolylines, stops };
+
+        drawStops(stops, cfg.color);
+        const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
+        return kakaoPath;
       } catch (err) {
         console.error('노선 로드 오류:', cfg.busNo, err);
-      }
-    }
-
-    // ── 단일 노선 선택 ──
-    function showTraffic() {
-      if (!trafficOn) {
-        trafficOn = true;
-        map.addOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
-        trafficMask.setMap(map);
-        document.getElementById('trafficBtn').classList.add('active');
-      }
-    }
-
-    function hideTraffic() {
-      if (trafficOn) {
-        trafficOn = false;
-        map.removeOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
-        trafficMask.setMap(null);
-        document.getElementById('trafficBtn').classList.remove('active');
       }
     }
 
@@ -712,7 +734,6 @@
         kakaoPath.forEach(p => bounds.extend(p));
         map.setBounds(bounds);
       }
-      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -725,7 +746,6 @@
       const bounds = new kakao.maps.LatLngBounds();
       paths.forEach(p => p && p.forEach(pt => bounds.extend(pt)));
       if (!bounds.isEmpty()) map.setBounds(bounds);
-      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -733,7 +753,6 @@
     // ── 버튼 클릭 핸들러 ──
     function deselect() {
       clearMap();
-      hideTraffic();
       activeKey = null;
       document.querySelectorAll('.bus-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById('overlayBadge').classList.remove('visible');

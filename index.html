@@ -449,6 +449,7 @@
     let activeRouteCfgs    = [];  // 현재 활성 노선 설정 목록
     let refreshTimer       = null;
     let activeKey          = null; // 현재 선택된 버튼 키
+    let activeSectionMap   = {};  // routeKey → { polylines[], stops[] }
 
     // ── 교통정보 레이어 ──
     let trafficOn = false;
@@ -502,6 +503,7 @@
       activeStopOverlays = [];
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
       activeRouteCfgs = [];
+      activeSectionMap = {};
     }
 
     // ── 정류장 마커 그리기 (API에서 받은 stations 배열 사용) ──
@@ -569,6 +571,23 @@
           });
           totalBuses += buses.length;
 
+          // 구간 혼잡도 색칠
+          const sectCongest = {};
+          buses.forEach(b => {
+            const ord = parseInt(xmlVal(b, 'sectOrd'));
+            const cg  = xmlVal(b, 'congetion') || '1';
+            sectCongest[ord] = cg;
+          });
+          const secData = activeSectionMap[cfg.routeKey];
+          if (secData) {
+            secData.polylines.forEach((pl, i) => {
+              const seq    = secData.stops[i]?.seq;
+              const cg     = sectCongest[seq];
+              const color  = cg ? CONGEST_COLOR[cg] : '#d1d5db';
+              pl.setOptions({ strokeColor: color });
+            });
+          }
+
           buses.forEach(b => {
             const lat     = parseFloat(xmlVal(b, 'gpsY'));
             const lng     = parseFloat(xmlVal(b, 'gpsX'));
@@ -625,8 +644,8 @@
 
     // ── 단일 노선 경로 그리기 (clearMap/타이머 없음) ──
     async function drawRouteForKey(key) {
-      const cfg = ROUTE_CFGS[key];
-      if (!cfg) return;
+      const cfg = { ...ROUTE_CFGS[key], routeKey: key };
+      if (!ROUTE_CFGS[key]) return;
       activeRouteCfgs.push(cfg);
 
       try {
@@ -673,15 +692,38 @@
           return Math.sqrt((p.lat - prev.lat) ** 2 + (p.lng - prev.lng) ** 2) >= MIN_DIST;
         });
 
-        const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
-        const polyline = new kakao.maps.Polyline({
-          path: kakaoPath, strokeWeight: 6, strokeColor: cfg.color,
-          strokeOpacity: 0.9, strokeStyle: 'solid'
-        });
-        polyline.setMap(map);
-        activePolylines.push(polyline);
-        drawStops(stops, cfg.color);
+        // ── 구간별 폴리라인 (혼잡도 색칠용) ──
+        const stopIdxs = [];
+        let searchFrom = 0;
+        for (const s of stops) {
+          const idx = closestIdx(simplified, s.lat, s.lng, searchFrom);
+          stopIdxs.push(idx);
+          searchFrom = idx;
+        }
 
+        const sectionPolylines = [];
+        for (let i = 0; i < stops.length - 1; i++) {
+          const seg = simplified.slice(stopIdxs[i], stopIdxs[i + 1] + 1)
+            .map(p => new kakao.maps.LatLng(p.lat, p.lng));
+          if (seg.length < 2) continue;
+          // 테두리(흰 외곽선) + 본선 두 겹으로 두껍게
+          const outline = new kakao.maps.Polyline({
+            path: seg, strokeWeight: 14, strokeColor: '#ffffff',
+            strokeOpacity: 0.9, strokeStyle: 'solid'
+          });
+          const line = new kakao.maps.Polyline({
+            path: seg, strokeWeight: 10, strokeColor: '#cccccc',
+            strokeOpacity: 0.95, strokeStyle: 'solid'
+          });
+          outline.setMap(map);
+          line.setMap(map);
+          activePolylines.push(outline, line);
+          sectionPolylines.push(line);
+        }
+        activeSectionMap[key] = { polylines: sectionPolylines, stops };
+
+        drawStops(stops, cfg.color);
+        const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
         return kakaoPath; // bounds 계산용
       } catch (err) {
         console.error('노선 로드 오류:', cfg.busNo, err);
@@ -716,7 +758,6 @@
         kakaoPath.forEach(p => bounds.extend(p));
         map.setBounds(bounds);
       }
-      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -729,7 +770,6 @@
       const bounds = new kakao.maps.LatLngBounds();
       paths.forEach(p => p && p.forEach(pt => bounds.extend(pt)));
       if (!bounds.isEmpty()) map.setBounds(bounds);
-      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -737,7 +777,6 @@
     // ── 선택 해제 ──
     function deselect() {
       clearMap();
-      hideTraffic();
       activeKey = null;
       document.querySelectorAll('.bus-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById('overlayBadge').classList.remove('visible');
