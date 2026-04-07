@@ -162,6 +162,37 @@
     .traffic-btn .bus-btn-sub { color: #9ca3af; }
     .traffic-btn.active .bus-btn-sub { color: #bbf7d0; }
 
+    /* ── 신호등 버튼 ── */
+    .signal-btn {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1.5px solid #e5e7eb;
+      border-radius: 14px;
+      background: #f9fafb;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-align: left;
+      font-family: inherit;
+      width: 100%;
+      margin-top: 10px;
+    }
+    .signal-btn:hover {
+      background: #fffbeb;
+      border-color: #fcd34d;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .signal-btn.active {
+      background: #78350f;
+      border-color: #78350f;
+      color: white;
+      box-shadow: 0 4px 16px rgba(120,53,15,0.25);
+    }
+    .signal-btn .bus-btn-sub { color: #9ca3af; }
+    .signal-btn.active .bus-btn-sub { color: #fde68a; }
+
     /* ── 범례 ── */
     .legend-box {
       background: #f8fafc;
@@ -369,6 +400,14 @@
           </div>
           <span class="bus-btn-arrow">›</span>
         </button>
+        <button class="signal-btn" id="signalBtn" onclick="toggleSignals()">
+          <div class="bus-badge" style="background:#d97706;font-size:18px">🚦</div>
+          <div class="bus-btn-info">
+            <div class="bus-btn-name">여의도 신호등</div>
+            <div class="bus-btn-sub">교차로 신호 현황 표시</div>
+          </div>
+          <span class="bus-btn-arrow">›</span>
+        </button>
       </div>
 
       <hr class="divider" />
@@ -418,8 +457,11 @@
       level: 4
     });
 
-    // 지도 클릭 시 노선/버스 초기화
-    kakao.maps.event.addListener(map, 'click', function() { deselect(); });
+    // 지도 클릭 시 노선/버스 초기화 + 신호 팝업 닫기
+    kakao.maps.event.addListener(map, 'click', function() {
+      deselect();
+      if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
+    });
 
     // ── API 설정 (Vercel Edge Function 프록시 경유 → CORS 우회) ──
     const API_KEY = '88416fd1fd0430fb9a6537b7bcb9f684304bb707e3eec8e5b8cd2ba448418bb3';
@@ -450,6 +492,135 @@
     let refreshTimer       = null;
     let activeKey          = null; // 현재 선택된 버튼 키
     let activeSectionMap   = {};  // routeKey → { polylines[], stops[] }
+
+    // ── 신호등 데이터 (여의도 19개 교차로) ──
+    const SIGNAL_DATA = [
+      {"id":"1294","name":"여의도공원앞","lat":37.5242539,"lon":126.922348206753,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"330"}},"se":{"lt":{"s":"protected-Movement-Allowed","r":"270"},"pd":{"s":"permissive-Movement-Allowed","r":"270"}},"sw":{"st":{"s":"stop-And-Remain","r":"330"}}}},
+      {"id":"1296","name":"여의도광장","lat":37.5269682,"lon":126.937554748095,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"21"},"lt":{"s":"stop-And-Remain","r":"811"}},"sw":{"st":{"s":"stop-And-Remain","r":"21"}}}},
+      {"id":"3206","name":"신길역앞","lat":37.5173984,"lon":126.926917096387,"phases":{"nt":{"st":{"s":"stop-And-Remain","r":"237"},"lt":{"s":"stop-And-Remain","r":"707"}},"et":{"lt":{"s":"protected-Movement-Allowed","r":"197"},"pd":{"s":"permissive-Movement-Allowed","r":"37"}},"st":{"st":{"s":"stop-And-Remain","r":"237"},"pd":{"s":"stop-And-Remain","r":"257"}}}},
+      {"id":"3304","name":"여의나루역","lat":37.5268705,"lon":126.93298596744,"phases":{"se":{"st":{"s":"stop-And-Remain","r":"211"},"lt":{"s":"stop-And-Remain","r":"871"}},"sw":{"lt":{"s":"protected-Movement-Allowed","r":"171"},"pd":{"s":"protected-Movement-Allowed","r":"171"}},"nw":{"st":{"s":"stop-And-Remain","r":"211"},"pd":{"s":"stop-And-Remain","r":"241"}}}},
+      {"id":"3808","name":"서강대교남단","lat":37.5319704,"lon":126.921654302718,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"455"},"lt":{"s":"stop-And-Remain","r":"825"},"pd":{"s":"stop-And-Remain","r":"465"}},"se":{"st":{"s":"stop-And-Remain","r":"36001"},"lt":{"s":"stop-And-Remain","r":"65"},"pd":{"s":"stop-And-Remain","r":"75"}},"sw":{"st":{"s":"stop-And-Remain","r":"455"},"lt":{"s":"stop-And-Remain","r":"975"},"pd":{"s":"stop-And-Remain","r":"465"}},"nw":{"st":{"s":"stop-And-Remain","r":"36001"},"lt":{"s":"stop-And-Remain","r":"36001"},"pd":{"s":"permissive-Movement-Allowed","r":"55"}}}},
+      {"id":"3811","name":"여의도주유소","lat":37.5308107,"lon":126.925638297557,"phases":{"se":{"st":{"s":"protected-Movement-Allowed","r":"310"},"lt":{"s":"protected-Movement-Allowed","r":"310"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"470"},"lt":{"s":"stop-And-Remain","r":"340"}},"nw":{"st":{"s":"stop-And-Remain","r":"510"},"pd":{"s":"stop-And-Remain","r":"530"}}}},
+      {"id":"3820","name":"여의도역","lat":37.5216713,"lon":126.924397990207,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"1183"},"lt":{"s":"protected-Movement-Allowed","r":"403"},"pd":{"s":"stop-And-Remain","r":"1223"}},"se":{"st":{"s":"stop-And-Remain","r":"453"},"lt":{"s":"stop-And-Remain","r":"453"},"pd":{"s":"stop-And-Remain","r":"483"}},"sw":{"st":{"s":"stop-And-Remain","r":"1183"},"lt":{"s":"protected-Movement-Allowed","r":"403"},"pd":{"s":"stop-And-Remain","r":"1223"}},"nw":{"st":{"s":"stop-And-Remain","r":"853"},"lt":{"s":"stop-And-Remain","r":"853"},"pd":{"s":"stop-And-Remain","r":"903"}}}},
+      {"id":"3824","name":"여의도굿모닝증권","lat":37.5258004,"lon":126.92283716491106,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"879"}},"se":{"pd":{"s":"stop-And-Remain","r":"49"}},"sw":{"st":{"s":"stop-And-Remain","r":"879"}}}},
+      {"id":"3826","name":"여의도삼부아파트","lat":37.5254001,"lon":126.93209650151725,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"199"},"pd":{"s":"protected-Movement-Allowed","r":"199"}},"se":{"pd":{"s":"protected-Movement-Allowed","r":"199"}},"sw":{"st":{"s":"stop-And-Remain","r":"199"}},"nw":{"st":{"s":"stop-And-Remain","r":"709"},"lt":{"s":"stop-And-Remain","r":"709"},"pd":{"s":"protected-Movement-Allowed","r":"199"}}}},
+      {"id":"3828","name":"마포대교남단","lat":37.5291921,"lon":126.937085275299,"phases":{"ne":{"st":{"s":"stop-And-Remain","r":"399"},"pd":{"s":"stop-And-Remain","r":"429"}},"se":{"st":{"s":"stop-And-Remain","r":"1109"},"pd":{"s":"stop-And-Remain","r":"1139"}},"sw":{"st":{"s":"stop-And-Remain","r":"399"},"pd":{"s":"stop-And-Remain","r":"429"}},"nw":{"st":{"s":"protected-Movement-Allowed","r":"329"},"lt":{"s":"stop-And-Remain","r":"9"},"pd":{"s":"permissive-Movement-Allowed","r":"89"}}}},
+      {"id":"3830","name":"여의도선착장","lat":37.5248516,"lon":126.93902891779,"phases":{"se":{"st":{"s":"protected-Movement-Allowed","r":"135"},"lt":{"s":"protected-Movement-Allowed","r":"135"}},"sw":{"lt":{"s":"stop-And-Remain","r":"175"},"pd":{"s":"stop-And-Remain","r":"205"}},"nw":{"st":{"s":"stop-And-Remain","r":"445"},"pd":{"s":"stop-And-Remain","r":"475"}}}},
+      {"id":"3837","name":"한양아파트앞","lat":37.5198646,"lon":126.932874824809,"phases":{"ne":{"st":{"s":"protected-Movement-Allowed","r":"477"},"lt":{"s":"stop-And-Remain","r":"537"},"pd":{"s":"protected-Movement-Allowed","r":"317"}},"se":{"st":{"s":"stop-And-Remain","r":"767"},"lt":{"s":"stop-And-Remain","r":"767"},"pd":{"s":"stop-And-Remain","r":"787"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"477"},"lt":{"s":"stop-And-Remain","r":"537"},"pd":{"s":"protected-Movement-Allowed","r":"317"}},"nw":{"st":{"s":"stop-And-Remain","r":"1117"},"lt":{"s":"stop-And-Remain","r":"1117"},"pd":{"s":"stop-And-Remain","r":"1137"}}}},
+      {"id":"3838","name":"KBS별관","lat":37.5187275,"lon":126.929523151683,"phases":{"ne":{"st":{"s":"protected-Movement-Allowed","r":"1077"}},"se":{"pd":{"s":"stop-And-Remain","r":"1147"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"1077"}}}},
+      {"id":"3839","name":"국민은행여의도","lat":37.5207167,"lon":126.93858660283406,"phases":{"ne":{"pd":{"s":"protected-Movement-Allowed","r":"363"}},"se":{"st":{"s":"stop-And-Remain","r":"1063"},"pd":{"s":"protected-Movement-Allowed","r":"363"}},"sw":{"st":{"s":"stop-And-Remain","r":"373"},"pd":{"s":"protected-Movement-Allowed","r":"363"}},"nw":{"lt":{"s":"stop-And-Remain","r":"833"},"pd":{"s":"protected-Movement-Allowed","r":"363"}}}},
+      {"id":"3880","name":"여의도수정아파트","lat":37.5220555,"lon":126.9308357224093,"phases":{"ne":{"lt":{"s":"stop-And-Remain","r":"821"},"pd":{"s":"stop-And-Remain","r":"451"}},"se":{"st":{"s":"protected-Movement-Allowed","r":"71"},"pd":{"s":"stop-And-Remain","r":"1081"}},"sw":{"st":{"s":"stop-And-Remain","r":"421"},"lt":{"s":"stop-And-Remain","r":"821"},"pd":{"s":"stop-And-Remain","r":"451"}},"nw":{"st":{"s":"protected-Movement-Allowed","r":"371"},"lt":{"s":"stop-And-Remain","r":"121"},"pd":{"s":"stop-And-Remain","r":"1081"}}}},
+      {"id":"3887","name":"영등포R","lat":37.5182947,"lon":126.93067767758919,"phases":{"nt":{"st":{"s":"protected-clearance","r":"29"},"pd":{"s":"stop-And-Remain","r":"69"}},"st":{"st":{"s":"protected-clearance","r":"29"},"lt":{"s":"protected-clearance","r":"29"}},"wt":{"st":{"s":"stop-And-Remain","r":"49"},"pd":{"s":"stop-And-Remain","r":"1029"}},"sw":{"st":{"s":"stop-And-Remain","r":"999"}}}},
+      {"id":"3946","name":"여의도HP빌딩","lat":37.5227563,"lon":126.9234506596217,"phases":{"ne":{"st":{"s":"protected-Movement-Allowed","r":"229"}},"se":{"pd":{"s":"stop-And-Remain","r":"279"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"229"}}}},
+      {"id":"4182","name":"대한민국헌정회","lat":37.5312613,"lon":126.91987142916477,"phases":{"ne":{"st":{"s":"protected-Movement-Allowed","r":"833"}},"se":{"pd":{"s":"stop-And-Remain","r":"893"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"833"}}}},
+      {"id":"4672","name":"여의도고교","lat":37.524279,"lon":126.934363595413,"phases":{"ne":{"st":{"s":"protected-Movement-Allowed","r":"309"}},"se":{"pd":{"s":"stop-And-Remain","r":"379"}},"sw":{"st":{"s":"protected-Movement-Allowed","r":"309"}}}}
+    ];
+
+    // ── 신호등 상태 ──
+    let signalOn = false;
+    let signalOverlays = [];
+    let signalPopup = null;
+
+    const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
+    const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
+    const SIG_STATUS = {
+      'protected-Movement-Allowed':  {label:'녹색', color:'#22c55e'},
+      'permissive-Movement-Allowed': {label:'녹색', color:'#22c55e'},
+      'stop-And-Remain':             {label:'적색', color:'#ef4444'},
+      'protected-clearance':         {label:'황색', color:'#f59e0b'},
+    };
+
+    function getSignalColor(phases) {
+      let hasGreen = false, hasYellow = false;
+      for (const dir of Object.values(phases)) {
+        for (const data of Object.values(dir)) {
+          if (data.s.includes('Movement-Allowed')) hasGreen = true;
+          if (data.s.includes('clearance')) hasYellow = true;
+        }
+      }
+      return hasGreen ? '#22c55e' : hasYellow ? '#f59e0b' : '#ef4444';
+    }
+
+    function showSignalPopup(id) {
+      if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
+      const sig = SIGNAL_DATA.find(s => s.id === String(id));
+      if (!sig) return;
+
+      let rows = '';
+      for (const [dir, types] of Object.entries(sig.phases)) {
+        for (const [type, data] of Object.entries(types)) {
+          const st = SIG_STATUS[data.s] || {label: data.s, color:'#9ca3af'};
+          const sec = parseInt(data.r);
+          const remain = sec && sec < 36000 ? Math.round(sec / 10) + '초' : '';
+          rows += `<tr>
+            <td style="padding:3px 8px 3px 0;color:#9ca3af;white-space:nowrap;font-size:11px">${DIR_KO[dir]||dir} ${TYPE_KO[type]||type}</td>
+            <td style="padding:3px 0;white-space:nowrap">
+              <span style="color:${st.color};font-weight:700;font-size:12px">${st.label}</span>
+              ${remain ? `<span style="color:#6b7280;font-size:10px"> · ${remain}</span>` : ''}
+            </td>
+          </tr>`;
+        }
+      }
+
+      signalPopup = new kakao.maps.CustomOverlay({
+        position: new kakao.maps.LatLng(sig.lat, sig.lon),
+        content: `<div style="
+            background:rgba(17,24,39,0.94);
+            border-radius:12px;padding:12px 14px;color:white;
+            font-family:Arial,'Malgun Gothic',sans-serif;
+            box-shadow:0 6px 24px rgba(0,0,0,0.5);
+            border:1px solid rgba(255,255,255,0.12);
+            min-width:170px;pointer-events:none;
+          ">
+          <div style="font-weight:800;font-size:13px;margin-bottom:8px;
+            border-bottom:1px solid rgba(255,255,255,0.15);padding-bottom:6px">
+            🚦 ${sig.name}
+          </div>
+          <table style="border-collapse:collapse;width:100%">${rows}</table>
+          <div style="font-size:9px;color:#6b7280;margin-top:8px">스냅샷 기준 데이터</div>
+        </div>`,
+        yAnchor: 1.25
+      });
+      signalPopup.setMap(map);
+    }
+
+    function showSignals() {
+      SIGNAL_DATA.forEach(sig => {
+        const color = getSignalColor(sig.phases);
+        const el = document.createElement('div');
+        el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="
+          background:rgba(17,24,39,0.82);border-radius:8px;
+          padding:4px 8px;color:white;font-size:11px;
+          cursor:pointer;white-space:nowrap;
+          display:flex;align-items:center;gap:5px;
+          font-family:Arial,'Malgun Gothic',sans-serif;
+          box-shadow:0 2px 8px rgba(0,0,0,0.4);
+          border:1px solid rgba(255,255,255,0.12);
+        ">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:50%;
+            background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
+          ${sig.name}
+        </div>`;
+        const overlay = new kakao.maps.CustomOverlay({
+          position: new kakao.maps.LatLng(sig.lat, sig.lon),
+          content: el, yAnchor: 1.4
+        });
+        overlay.setMap(map);
+        signalOverlays.push(overlay);
+      });
+    }
+
+    function hideSignals() {
+      signalOverlays.forEach(o => o.setMap(null));
+      signalOverlays = [];
+      if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
+    }
+
+    function toggleSignals() {
+      signalOn = !signalOn;
+      if (signalOn) showSignals(); else hideSignals();
+      document.getElementById('signalBtn').classList.toggle('active', signalOn);
+    }
 
     // ── 교통정보 레이어 ──
     let trafficOn = false;
