@@ -518,6 +518,9 @@
     let signalOn = false;
     let signalOverlays = [];
     let signalPopup = null;
+    let signalTimer = null;
+    let signalDots  = {};
+    let livePhases  = {};
 
     const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
     const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
@@ -527,6 +530,60 @@
       'stop-And-Remain':             {label:'적색', color:'#ef4444'},
       'protected-clearance':         {label:'황색', color:'#f59e0b'},
     };
+
+    function parseSignalItem(item) {
+      const dirs  = ['nt','et','st','wt','ne','se','sw','nw'];
+      const types = [
+        {key:'st', sts:'StsgSttsNm', rmnd:'StsgRmndCs'},
+        {key:'lt', sts:'LtsgSttsNm', rmnd:'LtsgRmndCs'},
+        {key:'pd', sts:'PdsgSttsNm', rmnd:'PdsgRmndCs'},
+      ];
+      const phases = {};
+      dirs.forEach(dir => {
+        types.forEach(({key, sts, rmnd}) => {
+          const s = item[dir + sts] || '';
+          const r = item[dir + rmnd] || '';
+          if (s) {
+            if (!phases[dir]) phases[dir] = {};
+            phases[dir][key] = {s, r};
+          }
+        });
+      });
+      return phases;
+    }
+
+    function signalApiUrl() {
+      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=100&pageNo=1&type=json`;
+    }
+
+    async function fetchLiveSignals() {
+      try {
+        const res  = await fetch(signalApiUrl());
+        const text = await res.text();
+        let items  = [];
+        try {
+          const json = JSON.parse(text);
+          const raw  = json?.response?.body?.items?.item ?? json?.items ?? [];
+          items = Array.isArray(raw) ? raw : [raw];
+        } catch { return; }
+
+        const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
+        items.forEach(item => {
+          const id = String(item.crsrdId);
+          if (ourIds.has(id)) livePhases[id] = parseSignalItem(item);
+        });
+
+        Object.entries(signalDots).forEach(([id, dot]) => {
+          const phases = livePhases[id];
+          if (!dot || !phases) return;
+          const color = getSignalColor(phases);
+          dot.style.background = color;
+          dot.style.boxShadow  = `0 0 5px ${color}`;
+        });
+      } catch (e) {
+        console.error('[신호 실시간]', e);
+      }
+    }
 
     function getSignalColor(phases) {
       let hasGreen = false, hasYellow = false;
@@ -544,7 +601,8 @@
       const sig = SIGNAL_DATA.find(s => s.id === String(id));
       if (!sig) return;
       let rows = '';
-      for (const [dir, types] of Object.entries(sig.phases)) {
+      const phases = livePhases[String(id)] || sig.phases;
+      for (const [dir, types] of Object.entries(phases)) {
         for (const [type, data] of Object.entries(types)) {
           const st = SIG_STATUS[data.s] || {label: data.s, color:'#9ca3af'};
           const sec = parseInt(data.r);
@@ -580,6 +638,7 @@
     }
 
     function showSignals() {
+      signalDots = {};
       const pts = activeRoutePts;
       const filtered = pts.length > 0
         ? SIGNAL_DATA.filter(sig =>
@@ -588,10 +647,11 @@
         : SIGNAL_DATA;
 
       filtered.forEach(sig => {
-        const color = getSignalColor(sig.phases);
+        const phases = livePhases[sig.id] || sig.phases;
+        const color  = getSignalColor(phases);
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="background:rgba(17,24,39,0.82);border-radius:8px;padding:4px 8px;color:white;font-size:11px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;font-family:Arial,'Malgun Gothic',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.12)">
-          <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
+          <span data-sig="${sig.id}" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
           ${sig.name}
         </div>`;
         const overlay = new kakao.maps.CustomOverlay({
@@ -600,12 +660,18 @@
         });
         overlay.setMap(map);
         signalOverlays.push(overlay);
+        signalDots[sig.id] = el.querySelector(`[data-sig="${sig.id}"]`);
       });
+
+      fetchLiveSignals();
+      if (!signalTimer) signalTimer = setInterval(fetchLiveSignals, 30000);
     }
 
     function hideSignals() {
+      if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
+      signalDots = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const http    = require('http');
+const https   = require('https');
 const path    = require('path');
 
 const app  = express();
@@ -7,44 +8,56 @@ const PORT = 3000;
 
 app.use(express.static(__dirname));
 
-// 서울 버스 API 프록시 — 응답 본문을 버퍼로 받아 로그 출력 후 전달
-app.get('/api/bus-api/*', (req, res) => {
-  const apiPath     = '/api/' + req.params[0];
+// 서울 버스 API 프록시
+app.get('/bus-api/*', (req, res) => {
+  const apiPath     = '/api/rest/' + req.params[0];
   const queryString = new URLSearchParams(req.query).toString();
   const fullPath    = queryString ? `${apiPath}?${queryString}` : apiPath;
 
-  console.log(`\n[요청] http://ws.bus.go.kr${fullPath}`);
+  console.log(`\n[버스요청] http://ws.bus.go.kr${fullPath}`);
 
-  const options = {
-    hostname: 'ws.bus.go.kr',
-    port: 80,
-    path: fullPath,
-    method: 'GET',
-  };
+  const proxyReq = http.request(
+    { hostname: 'ws.bus.go.kr', port: 80, path: fullPath, method: 'GET' },
+    (proxyRes) => {
+      const chunks = [];
+      proxyRes.on('data', chunk => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        console.log(`[버스응답] ${proxyRes.statusCode} ${text.substring(0, 200)}`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'text/xml; charset=utf-8');
+        res.send(text);
+      });
+    }
+  );
+  proxyReq.on('error', err => res.status(500).send(`오류: ${err.message}`));
+  proxyReq.end();
+});
 
-  const proxyReq = http.request(options, (proxyRes) => {
-    const chunks = [];
+// 신호 API 프록시 (apis.data.go.kr HTTPS)
+app.get('/signal-api/*', (req, res) => {
+  const apiPath     = '/' + req.params[0];
+  const queryString = new URLSearchParams(req.query).toString();
+  const fullPath    = queryString ? `${apiPath}?${queryString}` : apiPath;
 
-    proxyRes.on('data', chunk => chunks.push(chunk));
-    proxyRes.on('end', () => {
-      const buf  = Buffer.concat(chunks);
-      const text = buf.toString('utf8');
+  console.log(`\n[신호요청] https://apis.data.go.kr${fullPath}`);
 
-      // 터미널에 응답 앞부분 출력 (디버깅용)
-      console.log(`[상태코드] ${proxyRes.statusCode}`);
-      console.log(`[응답 앞부분]\n${text.substring(0, 600)}\n`);
-
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Type', 'text/xml; charset=utf-8');
-      res.send(text);
-    });
-  });
-
-  proxyReq.on('error', (err) => {
-    console.error('[프록시 오류]', err.message);
-    res.status(500).send(`오류: ${err.message}`);
-  });
-
+  const proxyReq = https.request(
+    { hostname: 'apis.data.go.kr', port: 443, path: fullPath, method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0' } },
+    (proxyRes) => {
+      const chunks = [];
+      proxyRes.on('data', chunk => chunks.push(chunk));
+      proxyRes.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        console.log(`[신호응답] ${proxyRes.statusCode} ${text.substring(0, 200)}`);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.send(text);
+      });
+    }
+  );
+  proxyReq.on('error', err => res.status(500).send(`오류: ${err.message}`));
   proxyReq.end();
 });
 
