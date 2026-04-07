@@ -603,6 +603,9 @@
           if (!ourIds.has(id)) return;
           const phases = parseSignalItem(item);
           livePhases[id] = phases;
+          // 카운트다운 중인 신호는 건드리지 않음 — waiting=true이거나 아직 초기화 안 된 것만 갱신
+          const existing = countdowns[id];
+          if (existing && !existing.waiting) return;
           const busDir = signalDirs[id] ?? null;
           const dt = getDisplayTime(phases, busDir);
           if (!dt) return;
