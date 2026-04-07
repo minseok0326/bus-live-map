@@ -560,29 +560,42 @@
     }
 
     function signalApiUrl() {
-      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=100&pageNo=1&type=json`;
+      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&numOfRows=1000&pageNo=1&type=json`;
     }
 
     async function fetchLiveSignals() {
       try {
         const res  = await fetch(signalApiUrl());
         const text = await res.text();
-        let items  = [];
+        console.log('[신호API 원문]', text.slice(0, 300));
+
+        let items = [];
         try {
           const json = JSON.parse(text);
-          const raw  = json?.response?.body?.items?.item ?? json?.items ?? [];
-          items = Array.isArray(raw) ? raw : [raw];
-        } catch { return; }
+          // 다양한 응답 구조 시도
+          const raw = json?.response?.body?.items?.item
+                   ?? json?.items
+                   ?? json?.response?.body?.items
+                   ?? [];
+          items = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+        } catch (e) {
+          console.error('[신호API] JSON 파싱 실패:', text.slice(0, 200));
+          return;
+        }
+
+        console.log('[신호API] 항목 수:', items.length, '/ 첫 항목:', items[0]);
 
         const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
+        let updated = 0;
         items.forEach(item => {
           const id = String(item.crsrdId);
           if (!ourIds.has(id)) return;
           livePhases[id] = parseSignalItem(item);
-          // API 갱신 시 카운트다운 리셋
           const dt = getDisplayTime(livePhases[id]);
           if (dt) countdowns[id] = { secs: dt.secs, color: dt.color };
+          updated++;
         });
+        console.log('[신호API] 갱신:', updated, '개 교차로');
 
         // 색상 점 업데이트
         Object.entries(signalDots).forEach(([id, dot]) => {
@@ -592,7 +605,7 @@
           dot.style.boxShadow  = `0 0 5px ${dot.style.background}`;
         });
       } catch (e) {
-        console.error('[신호 실시간]', e);
+        console.error('[신호API 오류]', e);
       }
     }
 
