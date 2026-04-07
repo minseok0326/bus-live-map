@@ -599,19 +599,25 @@
     }
 
     function getDisplayTime(phases) {
-      let best = null;
+      let red = null, green = null;
       for (const dir of Object.values(phases)) {
-        if (!dir.st) continue;
-        const sec = parseInt(dir.st.r);
-        if (!sec || sec >= 36000) continue;
-        const secs    = Math.round(sec / 10);
-        const isGreen = dir.st.s.includes('Movement-Allowed');
-        const isYellow= dir.st.s.includes('clearance');
-        const color   = isGreen ? '#22c55e' : isYellow ? '#f59e0b' : '#ef4444';
-        if (!best || (isGreen && !best.isGreen) || (isGreen === best.isGreen && secs < best.secs))
-          best = { secs, color, isGreen };
+        for (const type of ['st', 'lt', 'pd']) {
+          if (!dir[type]) continue;
+          const sec = parseInt(dir[type].r);
+          if (!sec || sec >= 36000) continue;
+          const secs    = Math.round(sec / 10);
+          const isGreen = dir[type].s.includes('Movement-Allowed');
+          const isYellow= dir[type].s.includes('clearance');
+          const color   = isGreen ? '#22c55e' : isYellow ? '#f59e0b' : '#ef4444';
+          if (isGreen) {
+            if (!green || secs < green.secs) green = { secs, color };
+          } else {
+            if (!red || secs < red.secs) red = { secs, color };
+          }
+          break;
+        }
       }
-      return best;
+      return red ?? green ?? null;
     }
 
     function getSignalColor(phases) {
@@ -677,16 +683,13 @@
         : SIGNAL_DATA;
 
       filtered.forEach(sig => {
-        const phases = livePhases[sig.id] || sig.phases;
-        const color  = getSignalColor(phases);
-        const dt     = getDisplayTime(phases);
-        if (dt) countdowns[sig.id] = { secs: dt.secs, color: dt.color };
+        const initColor = getSignalColor(livePhases[sig.id] || sig.phases);
 
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="background:rgba(17,24,39,0.82);border-radius:8px;padding:4px 8px;color:white;font-size:11px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;font-family:Arial,'Malgun Gothic',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.12)">
           🚦
-          <span data-sig="${sig.id}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
-          <span data-sig-time="${sig.id}" style="font-size:11px;font-weight:800;min-width:22px;color:${dt ? dt.color : '#9ca3af'}">${dt ? dt.secs + '초' : '--'}</span>
+          <span data-sig="${sig.id}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${initColor};box-shadow:0 0 5px ${initColor};flex-shrink:0"></span>
+          <span data-sig-time="${sig.id}" style="font-size:11px;font-weight:800;min-width:22px;color:#9ca3af">--</span>
         </div>`;
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(sig.lat, sig.lon),
