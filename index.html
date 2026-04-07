@@ -518,12 +518,15 @@
     ];
 
     // ── 신호등 상태 ──
-    let signalOn = false;
+    let signalOn       = false;
     let signalOverlays = [];
-    let signalPopup = null;
-    let signalTimer = null;
-    let signalDots  = {};   // crsrdId → color-dot span element
-    let livePhases  = {};   // crsrdId → 최신 phases (API 갱신)
+    let signalPopup    = null;
+    let signalTimer    = null;   // API 갱신 타이머 (10초)
+    let countdownTimer = null;   // 1초 카운트다운 타이머
+    let signalDots     = {};     // id → color-dot span
+    let signalTimes    = {};     // id → time-text span
+    let livePhases     = {};     // id → 최신 phases
+    let countdowns     = {};     // id → { secs, color }
 
     const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
     const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
@@ -574,22 +577,40 @@
         const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
         items.forEach(item => {
           const id = String(item.crsrdId);
-          if (ourIds.has(id)) {
-            livePhases[id] = parseSignalItem(item);
-          }
+          if (!ourIds.has(id)) return;
+          livePhases[id] = parseSignalItem(item);
+          // API 갱신 시 카운트다운 리셋
+          const dt = getDisplayTime(livePhases[id]);
+          if (dt) countdowns[id] = { secs: dt.secs, color: dt.color };
         });
 
-        // 마커 색상 인플레이스 업데이트
+        // 색상 점 업데이트
         Object.entries(signalDots).forEach(([id, dot]) => {
           const phases = livePhases[id];
           if (!dot || !phases) return;
-          const color = getSignalColor(phases);
-          dot.style.background  = color;
-          dot.style.boxShadow   = `0 0 5px ${color}`;
+          dot.style.background = getSignalColor(phases);
+          dot.style.boxShadow  = `0 0 5px ${dot.style.background}`;
         });
       } catch (e) {
         console.error('[신호 실시간]', e);
       }
+    }
+
+    // 마커에 표시할 대표 잔여시간 (녹색 우선, 없으면 최단 적색)
+    function getDisplayTime(phases) {
+      let best = null;
+      for (const dir of Object.values(phases)) {
+        if (!dir.st) continue;
+        const sec = parseInt(dir.st.r);
+        if (!sec || sec >= 36000) continue;
+        const secs    = Math.round(sec / 10);
+        const isGreen = dir.st.s.includes('Movement-Allowed');
+        const isYellow= dir.st.s.includes('clearance');
+        const color   = isGreen ? '#22c55e' : isYellow ? '#f59e0b' : '#ef4444';
+        if (!best || (isGreen && !best.isGreen) || (isGreen === best.isGreen && secs < best.secs))
+          best = { secs, color, isGreen };
+      }
+      return best;
     }
 
     function getSignalColor(phases) {
@@ -614,7 +635,8 @@
         for (const [type, data] of Object.entries(types)) {
           const st = SIG_STATUS[data.s] || {label: data.s, color:'#9ca3af'};
           const sec = parseInt(data.r);
-          const remain = sec && sec < 36000 ? Math.round(sec / 10) + '초' : '';
+          const cdSecs = countdowns[String(id)]?.secs;
+          const remain = sec && sec < 36000 ? (cdSecs != null ? cdSecs : Math.round(sec / 10)) + '초' : '';
           rows += `<tr>
             <td style="padding:3px 8px 3px 0;color:#9ca3af;white-space:nowrap;font-size:11px">${DIR_KO[dir]||dir} ${TYPE_KO[type]||type}</td>
             <td style="padding:3px 0;white-space:nowrap">
@@ -640,7 +662,7 @@
             🚦 ${sig.name}
           </div>
           <table style="border-collapse:collapse;width:100%">${rows}</table>
-          <div style="font-size:9px;color:#6b7280;margin-top:8px">스냅샷 기준 데이터</div>
+          <div style="font-size:9px;color:#6b7280;margin-top:8px">실시간 · 10초 갱신</div>
         </div>`,
         yAnchor: 1.25
       });
@@ -657,7 +679,7 @@
     }
 
     function showSignals() {
-      signalDots = {};
+      signalDots = {}; signalTimes = {}; countdowns = {};
       const pts = activeRoutePts;
       const filtered = pts.length > 0
         ? SIGNAL_DATA.filter(sig =>
@@ -668,6 +690,9 @@
       filtered.forEach(sig => {
         const phases = livePhases[sig.id] || sig.phases;
         const color  = getSignalColor(phases);
+        const dt     = getDisplayTime(phases);
+        if (dt) countdowns[sig.id] = { secs: dt.secs, color: dt.color };
+
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="
           background:rgba(17,24,39,0.82);border-radius:8px;
@@ -681,6 +706,8 @@
           <span data-sig="${sig.id}" style="display:inline-block;width:9px;height:9px;border-radius:50%;
             background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
           ${sig.name}
+          <span data-sig-time="${sig.id}" style="font-size:10px;font-weight:700;min-width:22px;
+            color:${dt ? dt.color : '#9ca3af'}">${dt ? dt.secs + '초' : '--'}</span>
         </div>`;
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(sig.lat, sig.lon),
@@ -688,19 +715,32 @@
         });
         overlay.setMap(map);
         signalOverlays.push(overlay);
-        signalDots[sig.id] = el.querySelector(`[data-sig="${sig.id}"]`);
+        signalDots[sig.id]  = el.querySelector(`[data-sig="${sig.id}"]`);
+        signalTimes[sig.id] = el.querySelector(`[data-sig-time="${sig.id}"]`);
       });
 
-      // 즉시 한 번 갱신 후 30초마다 반복
+      // 1초마다 카운트다운
+      if (!countdownTimer) {
+        countdownTimer = setInterval(() => {
+          Object.entries(countdowns).forEach(([id, cd]) => {
+            if (cd.secs > 0) cd.secs--;
+            const el = signalTimes[id];
+            if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
+          });
+        }, 1000);
+      }
+
+      // 10초마다 API 갱신
       fetchLiveSignals();
-      if (!signalTimer) signalTimer = setInterval(fetchLiveSignals, 30000);
+      if (!signalTimer) signalTimer = setInterval(fetchLiveSignals, 10000);
     }
 
     function hideSignals() {
-      if (signalTimer) { clearInterval(signalTimer); signalTimer = null; }
+      if (signalTimer)    { clearInterval(signalTimer);    signalTimer    = null; }
+      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
-      signalDots = {};
+      signalDots = {}; signalTimes = {}; countdowns = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 
