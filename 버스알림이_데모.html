@@ -685,6 +685,24 @@
     }
 
     // ── 단일 노선 선택 ──
+    function showTraffic() {
+      if (!trafficOn) {
+        trafficOn = true;
+        map.addOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
+        trafficMask.setMap(map);
+        document.getElementById('trafficBtn').classList.add('active');
+      }
+    }
+
+    function hideTraffic() {
+      if (trafficOn) {
+        trafficOn = false;
+        map.removeOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
+        trafficMask.setMap(null);
+        document.getElementById('trafficBtn').classList.remove('active');
+      }
+    }
+
     async function loadSingleRoute(key) {
       clearMap();
       setStatusMsg('<div class="status-empty">노선 불러오는 중…</div>');
@@ -694,6 +712,7 @@
         kakaoPath.forEach(p => bounds.extend(p));
         map.setBounds(bounds);
       }
+      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -706,6 +725,7 @@
       const bounds = new kakao.maps.LatLngBounds();
       paths.forEach(p => p && p.forEach(pt => bounds.extend(pt)));
       if (!bounds.isEmpty()) map.setBounds(bounds);
+      showTraffic();
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
     }
@@ -713,6 +733,7 @@
     // ── 버튼 클릭 핸들러 ──
     function deselect() {
       clearMap();
+      hideTraffic();
       activeKey = null;
       document.querySelectorAll('.bus-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById('overlayBadge').classList.remove('visible');
