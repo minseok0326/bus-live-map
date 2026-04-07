@@ -524,6 +524,7 @@
     let signalTimes    = {};
     let livePhases     = {};
     let countdowns     = {};
+    let signalDirs     = {};
 
     const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
     const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
@@ -533,6 +534,28 @@
       'stop-And-Remain':             {label:'적색', color:'#ef4444'},
       'protected-clearance':         {label:'황색', color:'#f59e0b'},
     };
+
+    function bearingToDir(deg) {
+      const dirs = ['nt','ne','et','se','st','sw','wt','nw'];
+      return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+    }
+
+    function getBusDir(sig, routePts) {
+      if (!routePts.length) return null;
+      let minD = Infinity, ci = 0;
+      routePts.forEach((p, i) => {
+        const d = (p.lat - sig.lat) ** 2 + (p.lng - sig.lon) ** 2;
+        if (d < minD) { minD = d; ci = i; }
+      });
+      const p1 = routePts[Math.max(0, ci - 4)];
+      const p2 = routePts[Math.min(routePts.length - 1, ci + 4)];
+      if (!p1 || !p2 || (p1.lat === p2.lat && p1.lng === p2.lng)) return null;
+      const φ1 = p1.lat * Math.PI / 180, φ2 = p2.lat * Math.PI / 180;
+      const Δλ = (p2.lng - p1.lng) * Math.PI / 180;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return bearingToDir((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
+    }
 
     function parseSignalItem(item) {
       const dirs  = ['nt','et','st','wt','ne','se','sw','nw'];
@@ -598,29 +621,47 @@
       }
     }
 
-    function getDisplayTime(phases) {
+    function getDisplayTime(phases, busDir) {
+      if (busDir && phases[busDir]) {
+        const d = phases[busDir];
+        for (const type of ['st','lt','pd']) {
+          if (!d[type]) continue;
+          const sec = parseInt(d[type].r);
+          if (!sec || sec >= 36000) continue;
+          const secs  = Math.round(sec / 10);
+          const color = d[type].s.includes('Movement-Allowed') ? '#22c55e'
+                      : d[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
+          return { secs, color };
+        }
+      }
       let red = null, green = null;
       for (const dir of Object.values(phases)) {
-        for (const type of ['st', 'lt', 'pd']) {
+        for (const type of ['st','lt','pd']) {
           if (!dir[type]) continue;
           const sec = parseInt(dir[type].r);
           if (!sec || sec >= 36000) continue;
           const secs    = Math.round(sec / 10);
           const isGreen = dir[type].s.includes('Movement-Allowed');
-          const isYellow= dir[type].s.includes('clearance');
-          const color   = isGreen ? '#22c55e' : isYellow ? '#f59e0b' : '#ef4444';
-          if (isGreen) {
-            if (!green || secs < green.secs) green = { secs, color };
-          } else {
-            if (!red || secs < red.secs) red = { secs, color };
-          }
+          const color   = isGreen ? '#22c55e'
+                        : dir[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
+          if (isGreen) { if (!green || secs < green.secs) green = { secs, color }; }
+          else         { if (!red   || secs < red.secs)   red   = { secs, color }; }
           break;
         }
       }
       return red ?? green ?? null;
     }
 
-    function getSignalColor(phases) {
+    function getSignalColor(phases, busDir) {
+      if (busDir && phases[busDir]) {
+        const d = phases[busDir];
+        for (const type of ['st','lt','pd']) {
+          if (!d[type]) continue;
+          if (d[type].s.includes('Movement-Allowed')) return '#22c55e';
+          if (d[type].s.includes('clearance')) return '#f59e0b';
+          return '#ef4444';
+        }
+      }
       let hasGreen = false, hasYellow = false;
       for (const dir of Object.values(phases)) {
         for (const data of Object.values(dir)) {

@@ -527,6 +527,7 @@
     let signalTimes    = {};     // id → time-text span
     let livePhases     = {};     // id → 최신 phases
     let countdowns     = {};     // id → { secs, color }
+    let signalDirs     = {};     // id → 버스 진행방향 (nt/et/st/wt/ne/se/sw/nw)
 
     const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
     const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
@@ -536,6 +537,32 @@
       'stop-And-Remain':             {label:'적색', color:'#ef4444'},
       'protected-clearance':         {label:'황색', color:'#f59e0b'},
     };
+
+    // ── 버스 진행방향 → 신호 방위 키 변환 ──
+    function bearingToDir(deg) {
+      // 0=N, 45=NE, 90=E, 135=SE, 180=S, 225=SW, 270=W, 315=NW
+      const dirs = ['nt','ne','et','se','st','sw','wt','nw'];
+      return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+    }
+
+    function getBusDir(sig, routePts) {
+      if (!routePts.length) return null;
+      // 교차로와 가장 가까운 경로 포인트 찾기
+      let minD = Infinity, ci = 0;
+      routePts.forEach((p, i) => {
+        const d = (p.lat - sig.lat) ** 2 + (p.lng - sig.lon) ** 2;
+        if (d < minD) { minD = d; ci = i; }
+      });
+      // 전후 포인트로 방위각 계산
+      const p1 = routePts[Math.max(0, ci - 4)];
+      const p2 = routePts[Math.min(routePts.length - 1, ci + 4)];
+      if (!p1 || !p2 || (p1.lat === p2.lat && p1.lng === p2.lng)) return null;
+      const φ1 = p1.lat * Math.PI / 180, φ2 = p2.lat * Math.PI / 180;
+      const Δλ = (p2.lng - p1.lng) * Math.PI / 180;
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return bearingToDir((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
+    }
 
     // ── 신호 API 파싱 ──
     function parseSignalItem(item) {
@@ -586,7 +613,8 @@
           const id = String(item.crsrdId);
           if (!ourIds.has(id)) return;
           livePhases[id] = parseSignalItem(item);
-          const dt = getDisplayTime(livePhases[id]);
+          const busDir = signalDirs[id] ?? null;
+          const dt = getDisplayTime(livePhases[id], busDir);
           if (dt) countdowns[id] = { secs: dt.secs, color: dt.color };
           updated++;
         });
@@ -595,41 +623,60 @@
         Object.entries(signalDots).forEach(([id, dot]) => {
           const phases = livePhases[id];
           if (!dot || !phases) return;
-          dot.style.background = getSignalColor(phases);
-          dot.style.boxShadow  = `0 0 5px ${dot.style.background}`;
+          const color = getSignalColor(phases, signalDirs[id] ?? null);
+          dot.style.background = color;
+          dot.style.boxShadow  = `0 0 5px ${color}`;
         });
       } catch (e) {
         console.error('[신호API 오류]', e);
       }
     }
 
-    // 마커에 표시할 잔여시간 — 직진 신호 우선, 없으면 좌회전/보행자
-    // 같은 색끼리는 최솟값, 초록보다 빨간 우선 (실제 변환 감지용)
-    function getDisplayTime(phases) {
+    function getDisplayTime(phases, busDir) {
+      // 버스 진행방향 신호 우선 반환
+      if (busDir && phases[busDir]) {
+        const d = phases[busDir];
+        for (const type of ['st','lt','pd']) {
+          if (!d[type]) continue;
+          const sec = parseInt(d[type].r);
+          if (!sec || sec >= 36000) continue;
+          const secs  = Math.round(sec / 10);
+          const color = d[type].s.includes('Movement-Allowed') ? '#22c55e'
+                      : d[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
+          return { secs, color };
+        }
+      }
+      // 폴백: 빨간 우선, 없으면 초록
       let red = null, green = null;
       for (const dir of Object.values(phases)) {
-        for (const type of ['st', 'lt', 'pd']) {
+        for (const type of ['st','lt','pd']) {
           if (!dir[type]) continue;
           const sec = parseInt(dir[type].r);
           if (!sec || sec >= 36000) continue;
           const secs    = Math.round(sec / 10);
           const isGreen = dir[type].s.includes('Movement-Allowed');
-          const isYellow= dir[type].s.includes('clearance');
-          const color   = isGreen ? '#22c55e' : isYellow ? '#f59e0b' : '#ef4444';
-          if (isGreen) {
-            if (!green || secs < green.secs) green = { secs, color };
-          } else {
-            if (!red || secs < red.secs) red = { secs, color };
-          }
-          break; // 방향당 첫 타입만
+          const color   = isGreen ? '#22c55e'
+                        : dir[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
+          if (isGreen) { if (!green || secs < green.secs) green = { secs, color }; }
+          else         { if (!red   || secs < red.secs)   red   = { secs, color }; }
+          break;
         }
       }
-      // 빨간 신호가 있으면 빨간 우선 표시 (전환 감지)
-      // 단, 빨간이 없으면 초록
       return red ?? green ?? null;
     }
 
-    function getSignalColor(phases) {
+    function getSignalColor(phases, busDir) {
+      // 버스 진행방향 신호 우선
+      if (busDir && phases[busDir]) {
+        const d = phases[busDir];
+        for (const type of ['st','lt','pd']) {
+          if (!d[type]) continue;
+          if (d[type].s.includes('Movement-Allowed')) return '#22c55e';
+          if (d[type].s.includes('clearance')) return '#f59e0b';
+          return '#ef4444';
+        }
+      }
+      // 폴백: 전체 방향
       let hasGreen = false, hasYellow = false;
       for (const dir of Object.values(phases)) {
         for (const data of Object.values(dir)) {
@@ -695,7 +742,7 @@
     }
 
     function showSignals() {
-      signalDots = {}; signalTimes = {}; countdowns = {};
+      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {};
       const pts = activeRoutePts;
       const filtered = pts.length > 0
         ? SIGNAL_DATA.filter(sig =>
@@ -704,8 +751,9 @@
         : SIGNAL_DATA;
 
       filtered.forEach(sig => {
-        // 초기 색상만 livePhases에서 가져오고, 카운트다운은 API 응답 후 설정
-        const initColor = getSignalColor(livePhases[sig.id] || sig.phases);
+        const busDir = getBusDir(sig, pts);
+        signalDirs[sig.id] = busDir;
+        const initColor = getSignalColor(livePhases[sig.id] || sig.phases, busDir);
 
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="
@@ -760,7 +808,7 @@
       if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
-      signalDots = {}; signalTimes = {}; countdowns = {};
+      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 
