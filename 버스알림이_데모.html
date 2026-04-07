@@ -692,11 +692,17 @@
 
       if (!countdownTimer) {
         countdownTimer = setInterval(() => {
+          let needsRefresh = false;
           Object.entries(countdowns).forEach(([id, cd]) => {
-            if (cd.secs > 0) cd.secs--;
+            if (cd.secs > 0) {
+              cd.secs--;
+            } else {
+              needsRefresh = true;
+            }
             const el = signalTimes[id];
             if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
           });
+          if (needsRefresh) fetchLiveSignals();
         }, 1000);
       }
 
