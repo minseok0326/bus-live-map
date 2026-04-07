@@ -556,7 +556,7 @@
     }
 
     function signalApiUrl() {
-      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&numOfRows=1000&pageNo=1&type=json`;
+      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&numOfRows=4000&pageNo=1&type=json`;
     }
 
     async function fetchLiveSignals() {
@@ -568,9 +568,9 @@
         let items = [];
         try {
           const json = JSON.parse(text);
-          const raw = json?.response?.body?.items?.item
+          const raw = json?.body?.items?.item
+                   ?? json?.response?.body?.items?.item
                    ?? json?.items
-                   ?? json?.response?.body?.items
                    ?? [];
           items = Array.isArray(raw) ? raw : (raw ? [raw] : []);
         } catch (e) {

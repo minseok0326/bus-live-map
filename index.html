@@ -560,7 +560,7 @@
     }
 
     function signalApiUrl() {
-      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&numOfRows=1000&pageNo=1&type=json`;
+      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&numOfRows=4000&pageNo=1&type=json`;
     }
 
     async function fetchLiveSignals() {
@@ -572,10 +572,9 @@
         let items = [];
         try {
           const json = JSON.parse(text);
-          // 다양한 응답 구조 시도
-          const raw = json?.response?.body?.items?.item
+          const raw = json?.body?.items?.item        // 실제 구조
+                   ?? json?.response?.body?.items?.item
                    ?? json?.items
-                   ?? json?.response?.body?.items
                    ?? [];
           items = Array.isArray(raw) ? raw : (raw ? [raw] : []);
         } catch (e) {
