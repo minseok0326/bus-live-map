@@ -578,7 +578,7 @@
     }
 
     function signalApiUrl(pageNo) {
-      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json`;
+      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json&_t=${Date.now()}`;
     }
 
     function parseSignalPage(text) {
@@ -763,7 +763,7 @@
               needsRefresh = true;
             }
           });
-          if (needsRefresh) fetchLiveSignals();
+          if (needsRefresh) setTimeout(fetchLiveSignals, 2000);
         }, 1000);
       }
 
@@ -775,7 +775,7 @@
       if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
-      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {};
+      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {}; livePhases = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 

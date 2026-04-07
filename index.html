@@ -586,7 +586,7 @@
     }
 
     function signalApiUrl(pageNo) {
-      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json`;
+      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json&_t=${Date.now()}`;
     }
 
     function parseSignalPage(text) {
@@ -790,7 +790,7 @@
               const el = signalTimes[id];
               if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
             } else {
-              // 시간 종료 → 색 반전 후 API 재요청으로 다음 페이즈 동기화
+              // 시간 종료 → 색 반전, 2초 후 API 재요청 (API 업데이트 대기)
               cd.waiting = true;
               const newColor = cd.color === '#22c55e' ? '#ef4444' : '#22c55e';
               const dot = signalDots[id];
@@ -800,7 +800,7 @@
               needsRefresh = true;
             }
           });
-          if (needsRefresh) fetchLiveSignals();
+          if (needsRefresh) setTimeout(fetchLiveSignals, 2000);
         }, 1000);
       }
 
@@ -812,7 +812,7 @@
       if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
-      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {};
+      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {}; livePhases = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 
