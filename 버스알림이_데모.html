@@ -555,30 +555,25 @@
       return phases;
     }
 
-    function signalApiUrl() {
-      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=1&type=json`;
+    function signalApiUrl(pageNo) {
+      return `/signal-api/B551982/rti/tl_drct_info?serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json`;
+    }
+
+    function parseSignalPage(text) {
+      try {
+        const json = JSON.parse(text);
+        const raw  = json?.body?.items?.item ?? json?.response?.body?.items?.item ?? [];
+        return Array.isArray(raw) ? raw : (raw ? [raw] : []);
+      } catch { return []; }
     }
 
     async function fetchLiveSignals() {
       try {
-        const res  = await fetch(signalApiUrl());
-        const text = await res.text();
-        console.log('[신호API 원문]', text.slice(0, 300));
-
-        let items = [];
-        try {
-          const json = JSON.parse(text);
-          const raw = json?.body?.items?.item
-                   ?? json?.response?.body?.items?.item
-                   ?? json?.items
-                   ?? [];
-          items = Array.isArray(raw) ? raw : (raw ? [raw] : []);
-        } catch (e) {
-          console.error('[신호API] JSON 파싱 실패:', text.slice(0, 200));
-          return;
-        }
-
-        console.log('[신호API] 항목 수:', items.length, '/ 첫 항목:', items[0]);
+        const [t1, t2] = await Promise.all([
+          fetch(signalApiUrl(1)).then(r => r.text()),
+          fetch(signalApiUrl(2)).then(r => r.text()),
+        ]);
+        const items = [...parseSignalPage(t1), ...parseSignalPage(t2)];
 
         const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
         let updated = 0;
@@ -590,7 +585,7 @@
           if (dt) countdowns[id] = { secs: dt.secs, color: dt.color };
           updated++;
         });
-        console.log('[신호API] 갱신:', updated, '개 교차로');
+        console.log('[신호API] 갱신:', updated, '/ 19개');
 
         Object.entries(signalDots).forEach(([id, dot]) => {
           const phases = livePhases[id];
