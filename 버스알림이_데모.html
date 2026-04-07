@@ -451,40 +451,12 @@
     // ── 교통정보 레이어 ──
     let trafficOn = false;
 
-    const YEOUIDO_PATH = [
-      new kakao.maps.LatLng(37.5255, 126.9197),
-      new kakao.maps.LatLng(37.5275, 126.9192),
-      new kakao.maps.LatLng(37.5305, 126.9198),
-      new kakao.maps.LatLng(37.5332, 126.9228),
-      new kakao.maps.LatLng(37.5338, 126.9280),
-      new kakao.maps.LatLng(37.5325, 126.9385),
-      new kakao.maps.LatLng(37.5300, 126.9430),
-      new kakao.maps.LatLng(37.5268, 126.9428),
-      new kakao.maps.LatLng(37.5248, 126.9390),
-      new kakao.maps.LatLng(37.5240, 126.9310),
-      new kakao.maps.LatLng(37.5245, 126.9240),
-    ];
-    const WORLD_PATH = [
-      new kakao.maps.LatLng(90, -180),
-      new kakao.maps.LatLng(90,  180),
-      new kakao.maps.LatLng(-90, 180),
-      new kakao.maps.LatLng(-90,-180),
-    ];
-    const trafficMask = new kakao.maps.Polygon({
-      path: [WORLD_PATH, YEOUIDO_PATH],
-      strokeWeight: 0,
-      fillColor: '#ffffff',
-      fillOpacity: 0.72,
-    });
-
     function toggleTraffic() {
       trafficOn = !trafficOn;
       if (trafficOn) {
         map.addOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
-        trafficMask.setMap(map);
       } else {
         map.removeOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
-        trafficMask.setMap(null);
       }
       document.getElementById('trafficBtn').classList.toggle('active', trafficOn);
     }
