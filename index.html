@@ -703,10 +703,10 @@
           box-shadow:0 2px 8px rgba(0,0,0,0.4);
           border:1px solid rgba(255,255,255,0.12);
         ">
-          <span data-sig="${sig.id}" style="display:inline-block;width:9px;height:9px;border-radius:50%;
+          🚦
+          <span data-sig="${sig.id}" style="display:inline-block;width:8px;height:8px;border-radius:50%;
             background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
-          ${sig.name}
-          <span data-sig-time="${sig.id}" style="font-size:10px;font-weight:700;min-width:22px;
+          <span data-sig-time="${sig.id}" style="font-size:11px;font-weight:800;min-width:22px;
             color:${dt ? dt.color : '#9ca3af'}">${dt ? dt.secs + '초' : '--'}</span>
         </div>`;
         const overlay = new kakao.maps.CustomOverlay({
