@@ -409,7 +409,7 @@
 
   </div>
 
-  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=01d103e1fba65540688cdac2e1f901b1&libraries=traffic"></script>
+  <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=01d103e1fba65540688cdac2e1f901b1"></script>
   <script>
     // ── 카카오맵 초기화 ──
     var mapContainer = document.getElementById('map');
@@ -451,7 +451,6 @@
     let activeKey          = null; // 현재 선택된 버튼 키
 
     // ── 교통정보 레이어 ──
-    const trafficLayer = new kakao.maps.TrafficLayer();
     let trafficOn = false;
 
     // 여의도 외부 마스크 폴리곤 (전체 세계 - 여의도 구멍)
@@ -484,10 +483,10 @@
     function toggleTraffic() {
       trafficOn = !trafficOn;
       if (trafficOn) {
-        trafficLayer.setMap(map);
+        map.addOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
         trafficMask.setMap(map);
       } else {
-        trafficLayer.setMap(null);
+        map.removeOverlayMapTypeId(kakao.maps.MapTypeId.TRAFFIC);
         trafficMask.setMap(null);
       }
       document.getElementById('trafficBtn').classList.toggle('active', trafficOn);
