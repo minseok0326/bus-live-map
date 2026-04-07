@@ -489,6 +489,7 @@
     let refreshTimer       = null;
     let activeKey          = null;
     let activeSectionMap   = {};
+    let activeRoutePts     = [];
 
     // ── 교통정보 레이어 ──
     // ── 신호등 데이터 (여의도 19개 교차로) ──
@@ -569,8 +570,24 @@
       signalPopup.setMap(map);
     }
 
+    function distanceMeter(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+      const Δφ = (lat2 - lat1) * Math.PI / 180;
+      const Δλ = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
     function showSignals() {
-      SIGNAL_DATA.forEach(sig => {
+      const pts = activeRoutePts;
+      const filtered = pts.length > 0
+        ? SIGNAL_DATA.filter(sig =>
+            pts.some(p => distanceMeter(sig.lat, sig.lon, p.lat, p.lng) < 80)
+          )
+        : SIGNAL_DATA;
+
+      filtered.forEach(sig => {
         const color = getSignalColor(sig.phases);
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="background:rgba(17,24,39,0.82);border-radius:8px;padding:4px 8px;color:white;font-size:11px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px;font-family:Arial,'Malgun Gothic',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.12)">
@@ -621,6 +638,7 @@
       if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
       activeRouteCfgs = [];
       activeSectionMap = {};
+      activeRoutePts = [];
     }
 
     // ── 정류장 마커 그리기 (API에서 받은 stations 배열 사용) ──
@@ -834,6 +852,7 @@
           sectionPolylines.push(line);
         }
         activeSectionMap[key] = { polylines: sectionPolylines, stops };
+        activeRoutePts.push(...simplified);
 
         drawStops(stops, cfg.color);
         const kakaoPath = simplified.map(p => new kakao.maps.LatLng(p.lat, p.lng));
@@ -854,6 +873,7 @@
       }
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
+      if (signalOn) { hideSignals(); showSignals(); }
     }
 
     // ── 전체 노선 선택 ──
@@ -866,6 +886,7 @@
       if (!bounds.isEmpty()) map.setBounds(bounds);
       await refreshBusPos();
       refreshTimer = setInterval(refreshBusPos, 5000);
+      if (signalOn) { hideSignals(); showSignals(); }
     }
 
     // ── 버튼 클릭 핸들러 ──
@@ -875,6 +896,7 @@
       document.querySelectorAll('.bus-btn').forEach(btn => btn.classList.remove('active'));
       document.getElementById('overlayBadge').classList.remove('visible');
       setStatusMsg('<div class="status-empty">노선을 선택해주세요.</div>');
+      if (signalOn) { hideSignals(); showSignals(); }
     }
 
     function selectBus(busKey) {
