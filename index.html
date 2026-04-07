@@ -521,12 +521,6 @@
     let signalOn       = false;
     let signalOverlays = [];
     let signalPopup    = null;
-    let countdownTimer = null;   // 1초 카운트다운 타이머
-    let signalDots     = {};     // id → color-dot span
-    let signalTimes    = {};     // id → time-text span
-    let livePhases     = {};     // id → 최신 phases
-    let countdowns     = {};     // id → { secs, color }
-    let signalDirs     = {};     // id → 버스 진행방향 (nt/et/st/wt/ne/se/sw/nw)
 
     const DIR_KO  = {nt:'북',et:'동',st:'남',wt:'서',ne:'북동',se:'남동',sw:'남서',nw:'북서'};
     const TYPE_KO = {st:'직진',lt:'좌회전',pd:'보행자'};
@@ -537,144 +531,7 @@
       'protected-clearance':         {label:'황색', color:'#f59e0b'},
     };
 
-    // ── 버스 진행방향 → 신호 방위 키 변환 ──
-    function bearingToDir(deg) {
-      // 0=N, 45=NE, 90=E, 135=SE, 180=S, 225=SW, 270=W, 315=NW
-      const dirs = ['nt','ne','et','se','st','sw','wt','nw'];
-      return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
-    }
-
-    function getBusDir(sig, routePts) {
-      if (!routePts.length) return null;
-      // 교차로와 가장 가까운 경로 포인트 찾기
-      let minD = Infinity, ci = 0;
-      routePts.forEach((p, i) => {
-        const d = (p.lat - sig.lat) ** 2 + (p.lng - sig.lon) ** 2;
-        if (d < minD) { minD = d; ci = i; }
-      });
-      // 전후 포인트로 방위각 계산
-      const p1 = routePts[Math.max(0, ci - 4)];
-      const p2 = routePts[Math.min(routePts.length - 1, ci + 4)];
-      if (!p1 || !p2 || (p1.lat === p2.lat && p1.lng === p2.lng)) return null;
-      const φ1 = p1.lat * Math.PI / 180, φ2 = p2.lat * Math.PI / 180;
-      const Δλ = (p2.lng - p1.lng) * Math.PI / 180;
-      const y = Math.sin(Δλ) * Math.cos(φ2);
-      const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-      return bearingToDir((Math.atan2(y, x) * 180 / Math.PI + 360) % 360);
-    }
-
-    // ── 신호 API 파싱 ──
-    function parseSignalItem(item) {
-      const dirs  = ['nt','et','st','wt','ne','se','sw','nw'];
-      const types = [
-        {key:'st', sts:'StsgSttsNm', rmnd:'StsgRmndCs'},
-        {key:'lt', sts:'LtsgSttsNm', rmnd:'LtsgRmndCs'},
-        {key:'pd', sts:'PdsgSttsNm', rmnd:'PdsgRmndCs'},
-      ];
-      const phases = {};
-      dirs.forEach(dir => {
-        types.forEach(({key, sts, rmnd}) => {
-          const s = item[dir + sts] || '';
-          const r = item[dir + rmnd] || '';
-          if (s) {
-            if (!phases[dir]) phases[dir] = {};
-            phases[dir][key] = {s, r};
-          }
-        });
-      });
-      return phases;
-    }
-
-    function signalApiUrl(pageNo) {
-      return `/api/proxy?host=apis.data.go.kr&path=${encodeURIComponent('B551982/rti/tl_drct_info')}&serviceKey=${encodeURIComponent(API_KEY)}&stdgCd=1100000000&numOfRows=1000&pageNo=${pageNo}&type=json&_t=${Date.now()}`;
-    }
-
-    function parseSignalPage(text) {
-      try {
-        const json = JSON.parse(text);
-        const raw  = json?.body?.items?.item ?? json?.response?.body?.items?.item ?? [];
-        return Array.isArray(raw) ? raw : (raw ? [raw] : []);
-      } catch { return []; }
-    }
-
-    async function fetchLiveSignals() {
-      try {
-        const [t1, t2] = await Promise.all([
-          fetch(signalApiUrl(1)).then(r => r.text()),
-          fetch(signalApiUrl(2)).then(r => r.text()),
-        ]);
-        const items = [...parseSignalPage(t1), ...parseSignalPage(t2)];
-        const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
-        let updated = 0;
-        items.forEach(item => {
-          const id = String(item.crsrdId);
-          if (!ourIds.has(id)) return;
-          const phases = parseSignalItem(item);
-          livePhases[id] = phases;
-          // 카운트다운 중인 신호는 건드리지 않음 — waiting=true이거나 아직 초기화 안 된 것만 갱신
-          const existing = countdowns[id];
-          if (existing && !existing.waiting) return;
-          const busDir = signalDirs[id] ?? null;
-          const dt = getDisplayTime(phases, busDir);
-          if (!dt) return;
-          countdowns[id] = { secs: dt.secs, color: dt.color };
-          const dot = signalDots[id];
-          if (dot) { dot.style.background = dt.color; dot.style.boxShadow = `0 0 5px ${dt.color}`; }
-          const timeEl = signalTimes[id];
-          if (timeEl) { timeEl.textContent = dt.secs + '초'; timeEl.style.color = dt.color; }
-          updated++;
-        });
-        console.log('[신호API] 갱신:', updated, '개');
-      } catch (e) {
-        console.error('[신호API 오류]', e);
-      }
-    }
-
-    function getDisplayTime(phases, busDir) {
-      // 버스 진행방향 신호 우선 반환
-      if (busDir && phases[busDir]) {
-        const d = phases[busDir];
-        for (const type of ['st','lt','pd']) {
-          if (!d[type]) continue;
-          const sec = parseInt(d[type].r);
-          if (!sec || sec >= 36000) continue;
-          const secs  = Math.round(sec / 10);
-          const color = d[type].s.includes('Movement-Allowed') ? '#22c55e'
-                      : d[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
-          return { secs, color };
-        }
-      }
-      // 폴백: 빨간 우선, 없으면 초록
-      let red = null, green = null;
-      for (const dir of Object.values(phases)) {
-        for (const type of ['st','lt','pd']) {
-          if (!dir[type]) continue;
-          const sec = parseInt(dir[type].r);
-          if (!sec || sec >= 36000) continue;
-          const secs    = Math.round(sec / 10);
-          const isGreen = dir[type].s.includes('Movement-Allowed');
-          const color   = isGreen ? '#22c55e'
-                        : dir[type].s.includes('clearance') ? '#f59e0b' : '#ef4444';
-          if (isGreen) { if (!green || secs < green.secs) green = { secs, color }; }
-          else         { if (!red   || secs < red.secs)   red   = { secs, color }; }
-          break;
-        }
-      }
-      return red ?? green ?? null;
-    }
-
-    function getSignalColor(phases, busDir) {
-      // 버스 진행방향 신호 우선
-      if (busDir && phases[busDir]) {
-        const d = phases[busDir];
-        for (const type of ['st','lt','pd']) {
-          if (!d[type]) continue;
-          if (d[type].s.includes('Movement-Allowed')) return '#22c55e';
-          if (d[type].s.includes('clearance')) return '#f59e0b';
-          return '#ef4444';
-        }
-      }
-      // 폴백: 전체 방향
+    function getSignalColor(phases) {
       let hasGreen = false, hasYellow = false;
       for (const dir of Object.values(phases)) {
         for (const data of Object.values(dir)) {
@@ -689,15 +546,13 @@
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
       const sig = SIGNAL_DATA.find(s => s.id === String(id));
       if (!sig) return;
-      const phases = livePhases[String(id)] || sig.phases;
 
       let rows = '';
-      for (const [dir, types] of Object.entries(phases)) {
+      for (const [dir, types] of Object.entries(sig.phases)) {
         for (const [type, data] of Object.entries(types)) {
           const st = SIG_STATUS[data.s] || {label: data.s, color:'#9ca3af'};
           const sec = parseInt(data.r);
-          const cdSecs = countdowns[String(id)]?.secs;
-          const remain = sec && sec < 36000 ? (cdSecs != null ? cdSecs : Math.round(sec / 10)) + '초' : '';
+          const remain = sec && sec < 36000 ? Math.round(sec / 10) + '초' : '';
           rows += `<tr>
             <td style="padding:3px 8px 3px 0;color:#9ca3af;white-space:nowrap;font-size:11px">${DIR_KO[dir]||dir} ${TYPE_KO[type]||type}</td>
             <td style="padding:3px 0;white-space:nowrap">
@@ -723,7 +578,6 @@
             🚦 ${sig.name}
           </div>
           <table style="border-collapse:collapse;width:100%">${rows}</table>
-          <div style="font-size:9px;color:#6b7280;margin-top:8px">실시간 · 10초 갱신</div>
         </div>`,
         yAnchor: 1.25
       });
@@ -740,7 +594,6 @@
     }
 
     function showSignals() {
-      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {};
       const pts = activeRoutePts;
       const filtered = pts.length > 0
         ? SIGNAL_DATA.filter(sig =>
@@ -749,10 +602,7 @@
         : SIGNAL_DATA;
 
       filtered.forEach(sig => {
-        const busDir = getBusDir(sig, pts);
-        signalDirs[sig.id] = busDir;
-        const initColor = getSignalColor(livePhases[sig.id] || sig.phases, busDir);
-
+        const color = getSignalColor(sig.phases);
         const el = document.createElement('div');
         el.innerHTML = `<div onclick="showSignalPopup('${sig.id}')" style="
           background:rgba(17,24,39,0.82);border-radius:8px;
@@ -764,10 +614,8 @@
           border:1px solid rgba(255,255,255,0.12);
         ">
           🚦
-          <span data-sig="${sig.id}" style="display:inline-block;width:8px;height:8px;border-radius:50%;
-            background:${initColor};box-shadow:0 0 5px ${initColor};flex-shrink:0"></span>
-          <span data-sig-time="${sig.id}" style="font-size:11px;font-weight:800;min-width:22px;
-            color:#9ca3af">--</span>
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+            background:${color};box-shadow:0 0 5px ${color};flex-shrink:0"></span>
         </div>`;
         const overlay = new kakao.maps.CustomOverlay({
           position: new kakao.maps.LatLng(sig.lat, sig.lon),
@@ -775,44 +623,12 @@
         });
         overlay.setMap(map);
         signalOverlays.push(overlay);
-        signalDots[sig.id]  = el.querySelector(`[data-sig="${sig.id}"]`);
-        signalTimes[sig.id] = el.querySelector(`[data-sig-time="${sig.id}"]`);
       });
-
-      // 1초마다 카운트다운
-      if (!countdownTimer) {
-        countdownTimer = setInterval(() => {
-          let needsRefresh = false;
-          Object.entries(countdowns).forEach(([id, cd]) => {
-            if (!cd || cd.waiting) return;
-            if (cd.secs > 0) {
-              cd.secs--;
-              const el = signalTimes[id];
-              if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
-            } else {
-              // 시간 종료 → 색 반전, 2초 후 API 재요청 (API 업데이트 대기)
-              cd.waiting = true;
-              const newColor = cd.color === '#22c55e' ? '#ef4444' : '#22c55e';
-              const dot = signalDots[id];
-              if (dot) { dot.style.background = newColor; dot.style.boxShadow = `0 0 5px ${newColor}`; }
-              const el = signalTimes[id];
-              if (el) { el.textContent = '--'; el.style.color = '#9ca3af'; }
-              needsRefresh = true;
-            }
-          });
-          if (needsRefresh) setTimeout(fetchLiveSignals, 2000);
-        }, 1000);
-      }
-
-      // 표시 시 1회 API 호출
-      fetchLiveSignals();
     }
 
     function hideSignals() {
-      if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
-      signalDots = {}; signalTimes = {}; countdowns = {}; signalDirs = {}; livePhases = {};
       if (signalPopup) { signalPopup.setMap(null); signalPopup = null; }
     }
 
