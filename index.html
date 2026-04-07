@@ -521,7 +521,6 @@
     let signalOn       = false;
     let signalOverlays = [];
     let signalPopup    = null;
-    let signalTimer    = null;   // API 갱신 타이머 (10초)
     let countdownTimer = null;   // 1초 카운트다운 타이머
     let signalDots     = {};     // id → color-dot span
     let signalTimes    = {};     // id → time-text span
@@ -600,33 +599,29 @@
 
     async function fetchLiveSignals() {
       try {
-        // 페이지 1, 2 병렬 요청 (서울 2537개 → 1000씩 2페이지로 커버)
         const [t1, t2] = await Promise.all([
           fetch(signalApiUrl(1)).then(r => r.text()),
           fetch(signalApiUrl(2)).then(r => r.text()),
         ]);
         const items = [...parseSignalPage(t1), ...parseSignalPage(t2)];
-
         const ourIds = new Set(SIGNAL_DATA.map(s => s.id));
         let updated = 0;
         items.forEach(item => {
           const id = String(item.crsrdId);
           if (!ourIds.has(id)) return;
-          livePhases[id] = parseSignalItem(item);
+          const phases = parseSignalItem(item);
+          livePhases[id] = phases;
           const busDir = signalDirs[id] ?? null;
-          const dt = getDisplayTime(livePhases[id], busDir);
-          if (dt) countdowns[id] = { secs: dt.secs, color: dt.color };
+          const dt = getDisplayTime(phases, busDir);
+          if (!dt) return;
+          countdowns[id] = { secs: dt.secs, color: dt.color };
+          const dot = signalDots[id];
+          if (dot) { dot.style.background = dt.color; dot.style.boxShadow = `0 0 5px ${dt.color}`; }
+          const timeEl = signalTimes[id];
+          if (timeEl) { timeEl.textContent = dt.secs + '초'; timeEl.style.color = dt.color; }
           updated++;
         });
-        console.log('[신호API] 갱신:', updated, '/ 19개');
-
-        Object.entries(signalDots).forEach(([id, dot]) => {
-          const phases = livePhases[id];
-          if (!dot || !phases) return;
-          const color = getSignalColor(phases, signalDirs[id] ?? null);
-          dot.style.background = color;
-          dot.style.boxShadow  = `0 0 5px ${color}`;
-        });
+        console.log('[신호API] 갱신:', updated, '개');
       } catch (e) {
         console.error('[신호API 오류]', e);
       }
@@ -786,25 +781,31 @@
         countdownTimer = setInterval(() => {
           let needsRefresh = false;
           Object.entries(countdowns).forEach(([id, cd]) => {
+            if (!cd || cd.waiting) return;
             if (cd.secs > 0) {
               cd.secs--;
+              const el = signalTimes[id];
+              if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
             } else {
-              needsRefresh = true;  // 0 되면 즉시 API 재요청
+              // 시간 종료 → 색 반전 후 API 재요청으로 다음 페이즈 동기화
+              cd.waiting = true;
+              const newColor = cd.color === '#22c55e' ? '#ef4444' : '#22c55e';
+              const dot = signalDots[id];
+              if (dot) { dot.style.background = newColor; dot.style.boxShadow = `0 0 5px ${newColor}`; }
+              const el = signalTimes[id];
+              if (el) { el.textContent = '--'; el.style.color = '#9ca3af'; }
+              needsRefresh = true;
             }
-            const el = signalTimes[id];
-            if (el) { el.textContent = cd.secs + '초'; el.style.color = cd.color; }
           });
           if (needsRefresh) fetchLiveSignals();
         }, 1000);
       }
 
-      // 10초마다 API 갱신
+      // 표시 시 1회 API 호출
       fetchLiveSignals();
-      if (!signalTimer) signalTimer = setInterval(fetchLiveSignals, 10000);
     }
 
     function hideSignals() {
-      if (signalTimer)    { clearInterval(signalTimer);    signalTimer    = null; }
       if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
       signalOverlays.forEach(o => o.setMap(null));
       signalOverlays = [];
